@@ -1,4 +1,4 @@
-# Combined Discord Bot (ZREatsBot)
+# Combined Discord Bot
 
 A unified Discord bot that combines three essential functionalities:
 1. **Order Command Generation** - Creates formatted commands for Fusion Assist, Fusion Order, and Wool Order with card/email pool management
@@ -82,9 +82,9 @@ A unified Discord bot that combines three essential functionalities:
    # Optional - comment out features you don't need
    POINTS_CHANNEL_ID=1234567890123456789
    OPENER_CHANNEL_ID=1234567890123456789
-   ROLE_PING_ID=1234567890123456789
-   VIP_ROLE_ID=1234567890123456789
-   ORDER_CHANNEL_MENTION=<#1234567890123456789>
+   ROLE_PING_ID=1352022044614590494
+   VIP_ROLE_ID=1371247728646033550
+   ORDER_CHANNEL_MENTION=<#1350935337269985334>
    ```
 
 2. **Database initialization**: On first run, the bot will auto-create:
@@ -180,4 +180,157 @@ user3@example.com
 
 ## Migrating from Separate Bots
 
-###
+### From Order Command Bot (Python)
+1. **Database migration**: Copy your existing `data/pool.db` file to the new bot directory
+2. **Logs migration**: Copy your `logs/` directory to preserve command history
+3. **Environment variables**: Copy `BOT_TOKEN` and `OWNER_ID` from your `.env` file
+
+### From Counter Bot (Node.js) 
+1. **Points migration**: The Node.js bot used `quick.db` which stores data in `json.sqlite`. You'll need to migrate this data:
+   ```python
+   # Migration script (run once)
+   import sqlite3
+   import json
+   
+   # Read from quick.db format
+   conn_old = sqlite3.connect('json.sqlite')  # Your old Node.js bot's DB
+   cursor_old = conn_old.cursor()
+   cursor_old.execute("SELECT key, value FROM json WHERE key LIKE 'points.%'")
+   rows = cursor_old.fetchall()
+   
+   # Write to new format
+   conn_new = sqlite3.connect('data/points.db')
+   cursor_new = conn_new.cursor()
+   for key, value in rows:
+       user_id = key.replace('points.', '')
+       points = json.loads(value)
+       cursor_new.execute("INSERT OR REPLACE INTO points (user_id, points) VALUES (?, ?)", (user_id, points))
+   
+   conn_new.commit()
+   conn_old.close()
+   conn_new.close()
+   ```
+2. **Channel ID**: Set `POINTS_CHANNEL_ID` in `.env` to your existing points channel
+
+### From Channel Opener Bot (Python)
+1. **Channel ID**: Set `OPENER_CHANNEL_ID` in `.env` to your existing opener channel
+2. **Role configuration**: Update `ROLE_PING_ID`, `VIP_ROLE_ID`, and `ORDER_CHANNEL_MENTION` as needed
+
+## Configuration Options
+
+### Required Settings
+- `BOT_TOKEN` - Your Discord bot token
+- `OWNER_ID` - Discord user ID for admin commands
+
+### Optional Settings (comment out if not using)
+- `POINTS_CHANNEL_ID` - Channel where images earn points
+- `OPENER_CHANNEL_ID` - Channel where open/close commands work
+- `ROLE_PING_ID` - Role to ping when opening (default: 1352022044614590494)
+- `VIP_ROLE_ID` - Role assigned with "Perm Fee" redemption (default: 1371247728646033550)
+- `ORDER_CHANNEL_MENTION` - Channel mention in open announcement (default: <#1350935337269985334>)
+
+### Card/Email Pool Constants
+The following are hardcoded in the bot but can be modified in the source:
+- `EXP_MONTH = '06'` - Credit card expiration month
+- `EXP_YEAR = '30'` - Credit card expiration year  
+- `ZIP_CODE = '19104'` - ZIP code for orders
+
+## Troubleshooting
+
+### Common Issues
+
+**"Card pool is empty" or "Email pool is empty"**
+- Use `/add_card` and `/add_email` commands or bulk upload files
+- Check that your databases were properly migrated
+
+**"Could not find order embed"**
+- Ensure the ticket bot's first message contains at least 2 embeds
+- The bot looks for the second embed in the first message of the channel
+
+**Points not being awarded**
+- Verify `POINTS_CHANNEL_ID` is set correctly
+- Check that the bot has permissions to read messages and send replies in that channel
+- Ensure images have proper MIME types (image/*)
+
+**Channel rename not working**
+- Check bot has "Manage Channels" permission
+- Verify `OPENER_CHANNEL_ID` matches the intended channel
+- Remember there's a 2 renames per 10 minutes rate limit (Discord's limitation)
+
+**Commands not appearing**
+- Bot needs "applications.commands" scope when invited
+- Commands sync automatically on startup
+- Try `/` in Discord to see if commands appear
+
+**Permission errors**
+- Bot needs appropriate permissions in each channel it operates in:
+  - View Channel, Send Messages, Read Message History (all channels)
+  - Manage Channels (opener channel)
+  - Manage Roles (for VIP role assignment)
+
+### Database Issues
+
+**Corrupted pool.db**
+- The bot automatically detects and recreates corrupted SQLite files
+- Your data will be lost if this happens - keep backups of working databases
+
+**Points not persisting**
+- Check that `data/` directory has write permissions
+- Ensure `data/points.db` is being created and is writable
+
+### Logging Issues
+
+**No log files created**
+- Logs are only created when order commands are used
+- Check that `logs/` directory has write permissions
+- Use `/log_stats` to verify logging is working
+
+**Log commands showing no data**
+- Logs are organized by month (YYYYMM format)
+- Use `/log_stats month:202405` for specific months
+- JSON files must be valid - corruption will cause read errors
+
+## Security Considerations
+
+- All command responses are ephemeral (only visible to command user)
+- Only the configured `OWNER_ID` can execute admin commands
+- Card numbers and emails are logged in full - secure your log files appropriately
+- Database files contain sensitive payment information - implement appropriate backups and security
+- Consider rotating cards/emails regularly and removing old entries
+
+## Advanced Usage
+
+### Custom Reward Types
+To add new reward types to the `/redeem` command, modify the choices in the command definition:
+```python
+@app_commands.choices(reward=[
+    app_commands.Choice(name='Free Order', value='Free Order'),
+    app_commands.Choice(name='Perm Fee', value='Perm Fee'),
+    app_commands.Choice(name='Custom Reward', value='Custom Reward'),  # Add this
+])
+```
+
+### Changing Point Values
+To award different point amounts, modify the points tracking section:
+```python
+# Change from 1 to any value
+new_points = bot.add_user_points(user_id, 2)  # Awards 2 points instead of 1
+```
+
+### Custom Card Expiration
+Update the constants at the top of the file:
+```python
+EXP_MONTH = '12'  # December
+EXP_YEAR = '25'   # 2025
+ZIP_CODE = '90210'  # Beverly Hills
+```
+
+## Support & Contributing
+
+For issues, feature requests, or contributions:
+1. Check the troubleshooting section above
+2. Verify your configuration matches the examples
+3. Test with minimal configuration first
+4. Check Discord bot permissions thoroughly
+
+The combined bot maintains all functionality from the original three bots while providing a unified interface and simplified deployment.
