@@ -1,4 +1,4 @@
-# Combined Discord Bot
+# Combined Discord Bot (ZREatsBot)
 
 A unified Discord bot that combines three essential functionalities:
 1. **Order Command Generation** - Creates formatted commands for Fusion Assist, Fusion Order, and Wool Order with card/email pool management
