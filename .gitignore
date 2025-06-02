@@ -1,0 +1,132 @@
+# Environment variables and secrets
+*.env
+.env
+.env.local
+.env.production
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+data/
+pool.db
+
+# Legacy files (no longer needed)
+addpool.py
+public/app/addpool.py
+add_to_pool.py
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environment
+venv/
+env/
+ENV/
+.venv
+.env/
+
+# Logs and output files
+logs/
+*.log
+*.csv
+*.json
+*.txt
+!README.md
+!requirements.txt
+
+# Node.js files (from old counter bot)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+json.sqlite
+
+# SQL files
+*.sql
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*.save
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Thumbs.db:encryptable
+
+# Windows
+desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.metadata
+.recommenders/
+
+# PyCharm
+.idea/
+*.iws
+*.iml
+*.ipr
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Bot-specific sensitive files
+config.json
+tokens.txt
+keys.txt
+
+# Legacy bot files (if migrating)
+bot.py.bak
+db.py.bak
+logging_utils.py.bak
+princounter.js.bak
