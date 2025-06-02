@@ -82,9 +82,9 @@ A unified Discord bot that combines three essential functionalities:
    # Optional - comment out features you don't need
    POINTS_CHANNEL_ID=1234567890123456789
    OPENER_CHANNEL_ID=1234567890123456789
-   ROLE_PING_ID=1352022044614590494
-   VIP_ROLE_ID=1371247728646033550
-   ORDER_CHANNEL_MENTION=<#1350935337269985334>
+   ROLE_PING_ID=1234567890123456789
+   VIP_ROLE_ID=1234567890123456789
+   ORDER_CHANNEL_MENTION=<#1234567890123456789>
    ```
 
 2. **Database initialization**: On first run, the bot will auto-create:
