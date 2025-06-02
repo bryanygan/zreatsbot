@@ -127,9 +127,16 @@ class CombinedBot(commands.Bot):
 
         card_id, number, cvv = row
         cursor.execute('DELETE FROM cards WHERE id = ?', (card_id,))
+        
+        # Check if this was the last card
+        cursor.execute('SELECT COUNT(*) FROM cards')
+        remaining_cards = cursor.fetchone()[0]
+        
         conn.commit()
         conn.close()
-        return number, cvv
+        
+        # Return the card and whether this was the last one
+        return number, cvv, remaining_cards == 0
 
     def get_and_remove_email(self) -> Optional[str]:
         """Fetch the oldest email and remove it from the database"""
@@ -144,9 +151,16 @@ class CombinedBot(commands.Bot):
 
         email_id, email = row
         cursor.execute('DELETE FROM emails WHERE id = ?', (email_id,))
+        
+        # Check if this was the last email
+        cursor.execute('SELECT COUNT(*) FROM emails')
+        remaining_emails = cursor.fetchone()[0]
+        
         conn.commit()
         conn.close()
-        return email
+        
+        # Return the email and whether this was the last one
+        return email, remaining_emails == 0
 
     def get_user_points(self, user_id: str) -> int:
         """Get points for a user"""
@@ -433,11 +447,19 @@ async def fusion_assist(interaction: discord.Interaction, mode: app_commands.Cho
         return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
     info = bot.parse_fields(embed)
-    card = bot.get_and_remove_card()
-    if card is None:
+    card_result = bot.get_and_remove_card()
+    if card_result is None:
         return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
     
-    number, cvv = card
+    # Unpack card result
+    if len(card_result) == 3:
+        number, cvv, was_last_card = card_result
+        card = (number, cvv)
+    else:
+        # Fallback for old format
+        card = card_result
+        was_last_card = False
+    
     raw_name = info['name']
     
     base_command = f"{info['link']},{number},{EXP_MONTH},{EXP_YEAR},{cvv},{ZIP_CODE}"
@@ -480,7 +502,16 @@ async def fusion_assist(interaction: discord.Interaction, mode: app_commands.Cho
         additional_data={"mode": mode.value, "parsed_fields": info, "custom_email": email}
     )
 
-    await interaction.response.send_message(f"```{command}```\n{tip_line}", ephemeral=True)
+    # Format output with email if used
+    output_message = f"```{command}```\n{tip_line}"
+    if email:
+        output_message += f"\n**Email used:** `{email}`"
+    
+    # Add warning if last card was used
+    if was_last_card:
+        output_message += f"\n⚠️ **Warning: Card pool is now empty! Add more cards with `/add_card` or `/bulk_cards`**"
+    
+    await interaction.response.send_message(output_message, ephemeral=True)
 
 @bot.tree.command(name='fusion_order', description='Format a Fusion order with email')
 async def fusion_order(interaction: discord.Interaction):
@@ -492,14 +523,30 @@ async def fusion_order(interaction: discord.Interaction):
         return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
     info = bot.parse_fields(embed)
-    card = bot.get_and_remove_card()
-    if card is None:
+    card_result = bot.get_and_remove_card()
+    if card_result is None:
         return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
     
-    number, cvv = card
-    email = bot.get_and_remove_email()
-    if email is None:
+    # Unpack card result
+    if len(card_result) == 3:
+        number, cvv, was_last_card = card_result
+        card = (number, cvv)
+    else:
+        # Fallback for old format
+        card = card_result
+        was_last_card = False
+    
+    email_result = bot.get_and_remove_email()
+    if email_result is None:
         return await interaction.response.send_message("❌ Email pool is empty.", ephemeral=True)
+    
+    # Unpack email result
+    if isinstance(email_result, tuple) and len(email_result) == 2:
+        email, was_last_email = email_result
+    else:
+        # Fallback for old format
+        email = email_result
+        was_last_email = False
 
     raw_name = info['name']
     parts = [f"/order uber order_details:{info['link']},{number},{EXP_MONTH},{EXP_YEAR},{cvv},{ZIP_CODE},{email}"]
@@ -533,7 +580,20 @@ async def fusion_order(interaction: discord.Interaction):
         additional_data={"parsed_fields": info}
     )
 
-    await interaction.response.send_message(f"```{command}```\n{tip_line}", ephemeral=True)
+    # Format output with email
+    output_message = f"```{command}```\n{tip_line}\n**Email used:** `{email}`"
+    
+    # Add warnings if pools are empty
+    warnings = []
+    if was_last_card:
+        warnings.append("⚠️ **Card pool is now empty!** Add more cards with `/add_card` or `/bulk_cards`")
+    if was_last_email:
+        warnings.append("⚠️ **Email pool is now empty!** Add more emails with `/add_email` or `/bulk_emails`")
+    
+    if warnings:
+        output_message += "\n\n" + "\n".join(warnings)
+    
+    await interaction.response.send_message(output_message, ephemeral=True)
 
 @bot.tree.command(name='wool_order', description='Format a Wool order')
 async def wool_order(interaction: discord.Interaction):
@@ -545,14 +605,30 @@ async def wool_order(interaction: discord.Interaction):
         return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
     info = bot.parse_fields(embed)
-    card = bot.get_and_remove_card()
-    if card is None:
+    card_result = bot.get_and_remove_card()
+    if card_result is None:
         return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
     
-    number, cvv = card
-    email = bot.get_and_remove_email()
-    if email is None:
+    # Unpack card result
+    if len(card_result) == 3:
+        number, cvv, was_last_card = card_result
+        card = (number, cvv)
+    else:
+        # Fallback for old format
+        card = card_result
+        was_last_card = False
+    
+    email_result = bot.get_and_remove_email()
+    if email_result is None:
         return await interaction.response.send_message("❌ Email pool is empty.", ephemeral=True)
+    
+    # Unpack email result
+    if isinstance(email_result, tuple) and len(email_result) == 2:
+        email, was_last_email = email_result
+    else:
+        # Fallback for old format
+        email = email_result
+        was_last_email = False
 
     command = f"{info['link']},{number},{EXP_MONTH}/{EXP_YEAR},{cvv},{ZIP_CODE},{email}"
     tip_line = f"Tip: ${info['tip']}"
@@ -570,7 +646,20 @@ async def wool_order(interaction: discord.Interaction):
         additional_data={"parsed_fields": info}
     )
 
-    await interaction.response.send_message(f"```{command}```\n{tip_line}", ephemeral=True)
+    # Format output with email
+    output_message = f"```{command}```\n{tip_line}\n**Email used:** `{email}`"
+    
+    # Add warnings if pools are empty
+    warnings = []
+    if was_last_card:
+        warnings.append("⚠️ **Card pool is now empty!** Add more cards with `/add_card` or `/bulk_cards`")
+    if was_last_email:
+        warnings.append("⚠️ **Email pool is now empty!** Add more emails with `/add_email` or `/bulk_emails`")
+    
+    if warnings:
+        output_message += "\n\n" + "\n".join(warnings)
+    
+    await interaction.response.send_message(output_message, ephemeral=True)
 
 # ADMIN COMMANDS FOR POOLS
 @bot.tree.command(name='add_card', description='(Admin) Add a card to the pool')
