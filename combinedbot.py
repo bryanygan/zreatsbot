@@ -533,7 +533,7 @@ async def fusion_assist(interaction: discord.Interaction, mode: app_commands.Cho
     # Format output with email if used
     output_message = f"```{command}```\n{tip_line}"
     if email:
-        output_message += f"\n**Email used:** `{email}` (custom)"
+        output_message += f"\n**Email used:** ```{email}``` (custom)"
     
     # Add source information
     if card_source == "custom":
@@ -649,7 +649,7 @@ async def fusion_order(interaction: discord.Interaction, custom_email: str = Non
         )
 
     # Format output with email
-    email_text = f"`{email}` ({'custom' if email_source == 'custom' else 'pool'})"
+    email_text = f"```{email}``` ({'custom' if email_source == 'custom' else 'pool'})"
     output_message = f"```{command}```\n{tip_line}\n**Email used:** {email_text}"
     
     # Add source information
@@ -756,7 +756,7 @@ async def wool_order(interaction: discord.Interaction, custom_email: str = None,
         )
 
     # Format output with email
-    email_text = f"`{email}` ({'custom' if email_source == 'custom' else 'pool'})"
+    email_text = f"```{email}``` ({'custom' if email_source == 'custom' else 'pool'})"
     output_message = f"```{command}```\n{tip_line}\n**Email used:** {email_text}"
     
     # Add source information
