@@ -513,7 +513,6 @@ async def fusion_assist(interaction: discord.Interaction, mode: app_commands.Cho
                 parts.append("override_dropoff:Leave at Door")
 
     command = ' '.join(parts)
-    tip_line = f"Tip: ${info['tip']}"
 
     # Only log if using pool resources
     if card_source == "pool":
@@ -530,22 +529,28 @@ async def fusion_assist(interaction: discord.Interaction, mode: app_commands.Cho
             additional_data={"mode": mode.value, "parsed_fields": info, "custom_email": email, "card_source": card_source}
         )
 
-    # Format output with email if used
-    output_message = f"```{command}```\n{tip_line}"
+    # Create embed for clean output
+    embed = discord.Embed(title="Fusion Assist", color=0x00ff00)
+    
+    # Add command output
+    embed.add_field(name="", value=f"```{command}```", inline=False)
+    
+    # Add email if used
     if email:
-        output_message += f"\n**Email used:** ```{email}``` (custom)"
+        embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
     
-    # Add source information
-    if card_source == "custom":
-        output_message += f"\n**Card:** Custom card used (not from pool)"
-    else:
-        output_message += f"\n**Card:** Pool card used"
+    # Add tip amount
+    embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
     
-    # Add warning if last card was used from pool
+    # Add footer only for warnings
+    warnings = []
     if was_last_card and card_source == "pool":
-        output_message += f"\n⚠️ **Warning: Card pool is now empty! Add more cards with `/add_card` or `/bulk_cards`**"
+        warnings.append("⚠️ Card pool empty!")
     
-    await interaction.response.send_message(output_message, ephemeral=True)
+    if warnings:
+        embed.set_footer(text=" | ".join(warnings))
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name='fusion_order', description='Format a Fusion order with email')
 @app_commands.describe(
@@ -631,7 +636,6 @@ async def fusion_order(interaction: discord.Interaction, custom_email: str = Non
                 parts.append("override_dropoff:Leave at Door")
 
     command = ' '.join(parts)
-    tip_line = f"Tip: ${info['tip']}"
 
     # Only log if using pool resources
     if card_source == "pool" or email_source == "pool":
@@ -648,27 +652,29 @@ async def fusion_order(interaction: discord.Interaction, custom_email: str = Non
             additional_data={"parsed_fields": info, "card_source": card_source, "email_source": email_source}
         )
 
-    # Format output with email
-    email_text = f"```{email}``` ({'custom' if email_source == 'custom' else 'pool'})"
-    output_message = f"```{command}```\n{tip_line}\n**Email used:** {email_text}"
+    # Create embed for clean output
+    embed = discord.Embed(title="Fusion Order", color=0x0099ff)
     
-    # Add source information
-    if card_source == "custom":
-        output_message += f"\n**Card:** Custom card used (not from pool)"
-    else:
-        output_message += f"\n**Card:** Pool card used"
+    # Add command output
+    embed.add_field(name="", value=f"```{command}```", inline=False)
     
-    # Add warnings if pools are empty
+    # Add email
+    embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
+    
+    # Add tip amount
+    embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
+    
+    # Add footer only for warnings
     warnings = []
     if was_last_card and card_source == "pool":
-        warnings.append("⚠️ **Card pool is now empty!** Add more cards with `/add_card` or `/bulk_cards`")
+        warnings.append("⚠️ Card pool empty!")
     if was_last_email and email_source == "pool":
-        warnings.append("⚠️ **Email pool is now empty!** Add more emails with `/add_email` or `/bulk_emails`")
+        warnings.append("⚠️ Email pool empty!")
     
     if warnings:
-        output_message += "\n\n" + "\n".join(warnings)
+        embed.set_footer(text=" | ".join(warnings))
     
-    await interaction.response.send_message(output_message, ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 @bot.tree.command(name='wool_order', description='Format a Wool order')
 @app_commands.describe(
@@ -738,7 +744,6 @@ async def wool_order(interaction: discord.Interaction, custom_email: str = None,
         email_source = "pool"
 
     command = f"{info['link']},{number},{EXP_MONTH}/{EXP_YEAR},{cvv},{ZIP_CODE},{email}"
-    tip_line = f"Tip: ${info['tip']}"
 
     # Only log if using pool resources
     if card_source == "pool" or email_source == "pool":
@@ -755,27 +760,29 @@ async def wool_order(interaction: discord.Interaction, custom_email: str = None,
             additional_data={"parsed_fields": info, "card_source": card_source, "email_source": email_source}
         )
 
-    # Format output with email
-    email_text = f"```{email}``` ({'custom' if email_source == 'custom' else 'pool'})"
-    output_message = f"```{command}```\n{tip_line}\n**Email used:** {email_text}"
+    # Create embed for clean output
+    embed = discord.Embed(title="Wool Order", color=0xff6600)
     
-    # Add source information
-    if card_source == "custom":
-        output_message += f"\n**Card:** Custom card used (not from pool)"
-    else:
-        output_message += f"\n**Card:** Pool card used"
+    # Add command output
+    embed.add_field(name="", value=f"```{command}```", inline=False)
     
-    # Add warnings if pools are empty
+    # Add email
+    embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
+    
+    # Add tip amount
+    embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
+    
+    # Add footer only for warnings
     warnings = []
     if was_last_card and card_source == "pool":
-        warnings.append("⚠️ **Card pool is now empty!** Add more cards with `/add_card` or `/bulk_cards`")
+        warnings.append("⚠️ Card pool empty!")
     if was_last_email and email_source == "pool":
-        warnings.append("⚠️ **Email pool is now empty!** Add more emails with `/add_email` or `/bulk_emails`")
+        warnings.append("⚠️ Email pool empty!")
     
     if warnings:
-        output_message += "\n\n" + "\n".join(warnings)
+        embed.set_footer(text=" | ".join(warnings))
     
-    await interaction.response.send_message(output_message, ephemeral=True)
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 # ADMIN COMMANDS FOR POOLS
 @bot.tree.command(name='add_card', description='(Admin) Add a card to the pool')
