@@ -1230,6 +1230,73 @@ async def remove_email(interaction: discord.Interaction, email: str):
         await interaction.response.send_message("❌ No matching email found in the pool.", ephemeral=True)
 
 # LOGGING COMMANDS
+@bot.tree.command(name='full_logs', description='(Admin) Print recent command logs with full email and command output')
+@app_commands.describe(count="Number of recent logs to retrieve (default: 5, max: 50)")
+async def full_logs(interaction: discord.Interaction, count: int = 5):
+    if not bot.owner_only(interaction):
+        return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
+    
+    if count < 1:
+        return await interaction.response.send_message("❌ Count must be at least 1.", ephemeral=True)
+    if count > 50:
+        return await interaction.response.send_message("❌ Maximum count is 50.", ephemeral=True)
+    
+    # Get recent logs from JSON file
+    current_month = datetime.now().strftime('%Y%m')
+    json_file = LOGS_DIR / f"commands_{current_month}.json"
+    
+    if not json_file.exists():
+        return await interaction.response.send_message("❌ No logs found.", ephemeral=True)
+    
+    try:
+        with open(json_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+        
+        sorted_data = sorted(data, key=lambda x: x["timestamp"], reverse=True)
+        logs = sorted_data[:count]
+    except Exception as e:
+        return await interaction.response.send_message(f"❌ Error reading logs: {e}", ephemeral=True)
+    
+    if not logs:
+        return await interaction.response.send_message("❌ No logs found.", ephemeral=True)
+    
+    # Format the output
+    output_lines = []
+    for i, log in enumerate(logs, 1):
+        email = log.get('email_used', 'N/A')
+        command = log.get('command_output', 'N/A')
+        
+        output_lines.append(f"{i}. email used: {email}")
+        output_lines.append(f"   order command: {command}")
+        output_lines.append("")  # Empty line for spacing
+    
+    output_text = "\n".join(output_lines)
+    
+    # Check if output is too long for Discord message
+    if len(output_text) > 1800:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+            f.write(f"Recent {len(logs)} Full Command Logs\n")
+            f.write("=" * 50 + "\n\n")
+            f.write(output_text)
+            temp_file_path = f.name
+        
+        try:
+            with open(temp_file_path, 'rb') as f:
+                discord_file = discord.File(f, filename=f"full_logs_{count}.txt")
+                await interaction.response.send_message(
+                    f"📄 **Recent {len(logs)} Full Command Logs** (sent as file due to length)",
+                    file=discord_file,
+                    ephemeral=True
+                )
+        finally:
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass
+    else:
+        formatted_output = f"📋 **Recent {len(logs)} Full Command Logs**\n```\n{output_text}\n```"
+        await interaction.response.send_message(formatted_output, ephemeral=True)
+
 @bot.tree.command(name='print_logs', description='(Admin) Print recent command logs with email and card digits 9-16')
 @app_commands.describe(count="Number of recent logs to retrieve (default: 10, max: 100)")
 async def print_logs(interaction: discord.Interaction, count: int = 10):
