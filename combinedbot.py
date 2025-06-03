@@ -355,6 +355,10 @@ bot = CombinedBot()
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
+    
+    # Set bot status to invisible (appear offline)
+    await bot.change_presence(status=discord.Status.invisible)
+    
     try:
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} commands")
@@ -437,28 +441,50 @@ async def on_message(message):
     app_commands.Choice(name='Postmates', value='p'),
     app_commands.Choice(name='UberEats', value='u'),
 ])
-@app_commands.describe(email="Optional: Add a custom email to the end of the command")
-async def fusion_assist(interaction: discord.Interaction, mode: app_commands.Choice[str], email: str = None):
+@app_commands.describe(
+    email="Optional: Add a custom email to the command",
+    card_number="Optional: Use custom card number (bypasses pool)",
+    card_cvv="Optional: CVV for custom card (required if card_number provided)"
+)
+async def fusion_assist(interaction: discord.Interaction, mode: app_commands.Choice[str], 
+                       email: str = None, card_number: str = None, card_cvv: str = None):
     if not bot.owner_only(interaction):
         return await interaction.response.send_message("❌ You are not authorized.", ephemeral=True)
+
+    # Validate custom card parameters
+    if card_number and not card_cvv:
+        return await interaction.response.send_message("❌ CVV required when using custom card number.", ephemeral=True)
+    if card_cvv and not card_number:
+        return await interaction.response.send_message("❌ Card number required when using custom CVV.", ephemeral=True)
 
     embed = await bot.fetch_order_embed(interaction.channel)
     if embed is None:
         return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
     info = bot.parse_fields(embed)
-    card_result = bot.get_and_remove_card()
-    if card_result is None:
-        return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
     
-    # Unpack card result
-    if len(card_result) == 3:
-        number, cvv, was_last_card = card_result
+    # Use custom card or get from pool
+    was_last_card = False
+    if card_number and card_cvv:
+        # Use custom card
+        number, cvv = card_number, card_cvv
         card = (number, cvv)
+        card_source = "custom"
     else:
-        # Fallback for old format
-        card = card_result
-        was_last_card = False
+        # Get card from pool
+        card_result = bot.get_and_remove_card()
+        if card_result is None:
+            return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
+        
+        # Unpack card result
+        if len(card_result) == 3:
+            number, cvv, was_last_card = card_result
+            card = (number, cvv)
+        else:
+            # Fallback for old format
+            card = card_result
+            was_last_card = False
+        card_source = "pool"
     
     raw_name = info['name']
     
@@ -489,64 +515,104 @@ async def fusion_assist(interaction: discord.Interaction, mode: app_commands.Cho
     command = ' '.join(parts)
     tip_line = f"Tip: ${info['tip']}"
 
-    bot.log_command_output(
-        command_type="fusion_assist",
-        user_id=interaction.user.id,
-        username=str(interaction.user),
-        channel_id=interaction.channel.id,
-        guild_id=interaction.guild.id if interaction.guild else None,
-        command_output=command,
-        tip_amount=info['tip'],
-        card_used=card,
-        email_used=email,
-        additional_data={"mode": mode.value, "parsed_fields": info, "custom_email": email}
-    )
+    # Only log if using pool resources
+    if card_source == "pool":
+        bot.log_command_output(
+            command_type="fusion_assist",
+            user_id=interaction.user.id,
+            username=str(interaction.user),
+            channel_id=interaction.channel.id,
+            guild_id=interaction.guild.id if interaction.guild else None,
+            command_output=command,
+            tip_amount=info['tip'],
+            card_used=card,
+            email_used=email,
+            additional_data={"mode": mode.value, "parsed_fields": info, "custom_email": email, "card_source": card_source}
+        )
 
     # Format output with email if used
     output_message = f"```{command}```\n{tip_line}"
     if email:
-        output_message += f"\n**Email used:** `{email}`"
+        output_message += f"\n**Email used:** `{email}` (custom)"
     
-    # Add warning if last card was used
-    if was_last_card:
+    # Add source information
+    if card_source == "custom":
+        output_message += f"\n**Card:** Custom card used (not from pool)"
+    else:
+        output_message += f"\n**Card:** Pool card used"
+    
+    # Add warning if last card was used from pool
+    if was_last_card and card_source == "pool":
         output_message += f"\n⚠️ **Warning: Card pool is now empty! Add more cards with `/add_card` or `/bulk_cards`**"
     
     await interaction.response.send_message(output_message, ephemeral=True)
 
 @bot.tree.command(name='fusion_order', description='Format a Fusion order with email')
-async def fusion_order(interaction: discord.Interaction):
+@app_commands.describe(
+    custom_email="Optional: Use custom email (bypasses pool)",
+    card_number="Optional: Use custom card number (bypasses pool)",
+    card_cvv="Optional: CVV for custom card (required if card_number provided)"
+)
+async def fusion_order(interaction: discord.Interaction, custom_email: str = None, 
+                      card_number: str = None, card_cvv: str = None):
     if not bot.owner_only(interaction):
         return await interaction.response.send_message("❌ You are not authorized.", ephemeral=True)
+
+    # Validate custom card parameters
+    if card_number and not card_cvv:
+        return await interaction.response.send_message("❌ CVV required when using custom card number.", ephemeral=True)
+    if card_cvv and not card_number:
+        return await interaction.response.send_message("❌ Card number required when using custom CVV.", ephemeral=True)
 
     embed = await bot.fetch_order_embed(interaction.channel)
     if embed is None:
         return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
     info = bot.parse_fields(embed)
-    card_result = bot.get_and_remove_card()
-    if card_result is None:
-        return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
     
-    # Unpack card result
-    if len(card_result) == 3:
-        number, cvv, was_last_card = card_result
+    # Use custom card or get from pool
+    was_last_card = False
+    if card_number and card_cvv:
+        # Use custom card
+        number, cvv = card_number, card_cvv
         card = (number, cvv)
+        card_source = "custom"
     else:
-        # Fallback for old format
-        card = card_result
-        was_last_card = False
+        # Get card from pool
+        card_result = bot.get_and_remove_card()
+        if card_result is None:
+            return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
+        
+        # Unpack card result
+        if len(card_result) == 3:
+            number, cvv, was_last_card = card_result
+            card = (number, cvv)
+        else:
+            # Fallback for old format
+            card = card_result
+            was_last_card = False
+        card_source = "pool"
     
-    email_result = bot.get_and_remove_email()
-    if email_result is None:
-        return await interaction.response.send_message("❌ Email pool is empty.", ephemeral=True)
-    
-    # Unpack email result
-    if isinstance(email_result, tuple) and len(email_result) == 2:
-        email, was_last_email = email_result
+    # Use custom email or get from pool
+    was_last_email = False
+    if custom_email:
+        # Use custom email
+        email = custom_email
+        email_source = "custom"
     else:
-        # Fallback for old format
-        email = email_result
-        was_last_email = False
+        # Get email from pool
+        email_result = bot.get_and_remove_email()
+        if email_result is None:
+            return await interaction.response.send_message("❌ Email pool is empty.", ephemeral=True)
+        
+        # Unpack email result
+        if isinstance(email_result, tuple) and len(email_result) == 2:
+            email, was_last_email = email_result
+        else:
+            # Fallback for old format
+            email = email_result
+            was_last_email = False
+        email_source = "pool"
 
     raw_name = info['name']
     parts = [f"/order uber order_details:{info['link']},{number},{EXP_MONTH},{EXP_YEAR},{cvv},{ZIP_CODE},{email}"]
@@ -567,27 +633,36 @@ async def fusion_order(interaction: discord.Interaction):
     command = ' '.join(parts)
     tip_line = f"Tip: ${info['tip']}"
 
-    bot.log_command_output(
-        command_type="fusion_order",
-        user_id=interaction.user.id,
-        username=str(interaction.user),
-        channel_id=interaction.channel.id,
-        guild_id=interaction.guild.id if interaction.guild else None,
-        command_output=command,
-        tip_amount=info['tip'],
-        card_used=card,
-        email_used=email,
-        additional_data={"parsed_fields": info}
-    )
+    # Only log if using pool resources
+    if card_source == "pool" or email_source == "pool":
+        bot.log_command_output(
+            command_type="fusion_order",
+            user_id=interaction.user.id,
+            username=str(interaction.user),
+            channel_id=interaction.channel.id,
+            guild_id=interaction.guild.id if interaction.guild else None,
+            command_output=command,
+            tip_amount=info['tip'],
+            card_used=card if card_source == "pool" else None,
+            email_used=email if email_source == "pool" else None,
+            additional_data={"parsed_fields": info, "card_source": card_source, "email_source": email_source}
+        )
 
     # Format output with email
-    output_message = f"```{command}```\n{tip_line}\n**Email used:** `{email}`"
+    email_text = f"`{email}` ({'custom' if email_source == 'custom' else 'pool'})"
+    output_message = f"```{command}```\n{tip_line}\n**Email used:** {email_text}"
+    
+    # Add source information
+    if card_source == "custom":
+        output_message += f"\n**Card:** Custom card used (not from pool)"
+    else:
+        output_message += f"\n**Card:** Pool card used"
     
     # Add warnings if pools are empty
     warnings = []
-    if was_last_card:
+    if was_last_card and card_source == "pool":
         warnings.append("⚠️ **Card pool is now empty!** Add more cards with `/add_card` or `/bulk_cards`")
-    if was_last_email:
+    if was_last_email and email_source == "pool":
         warnings.append("⚠️ **Email pool is now empty!** Add more emails with `/add_email` or `/bulk_emails`")
     
     if warnings:
@@ -596,64 +671,105 @@ async def fusion_order(interaction: discord.Interaction):
     await interaction.response.send_message(output_message, ephemeral=True)
 
 @bot.tree.command(name='wool_order', description='Format a Wool order')
-async def wool_order(interaction: discord.Interaction):
+@app_commands.describe(
+    custom_email="Optional: Use custom email (bypasses pool)",
+    card_number="Optional: Use custom card number (bypasses pool)",
+    card_cvv="Optional: CVV for custom card (required if card_number provided)"
+)
+async def wool_order(interaction: discord.Interaction, custom_email: str = None,
+                    card_number: str = None, card_cvv: str = None):
     if not bot.owner_only(interaction):
         return await interaction.response.send_message("❌ You are not authorized.", ephemeral=True)
+
+    # Validate custom card parameters
+    if card_number and not card_cvv:
+        return await interaction.response.send_message("❌ CVV required when using custom card number.", ephemeral=True)
+    if card_cvv and not card_number:
+        return await interaction.response.send_message("❌ Card number required when using custom CVV.", ephemeral=True)
 
     embed = await bot.fetch_order_embed(interaction.channel)
     if embed is None:
         return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
     info = bot.parse_fields(embed)
-    card_result = bot.get_and_remove_card()
-    if card_result is None:
-        return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
     
-    # Unpack card result
-    if len(card_result) == 3:
-        number, cvv, was_last_card = card_result
+    # Use custom card or get from pool
+    was_last_card = False
+    if card_number and card_cvv:
+        # Use custom card
+        number, cvv = card_number, card_cvv
         card = (number, cvv)
+        card_source = "custom"
     else:
-        # Fallback for old format
-        card = card_result
-        was_last_card = False
+        # Get card from pool
+        card_result = bot.get_and_remove_card()
+        if card_result is None:
+            return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
+        
+        # Unpack card result
+        if len(card_result) == 3:
+            number, cvv, was_last_card = card_result
+            card = (number, cvv)
+        else:
+            # Fallback for old format
+            card = card_result
+            was_last_card = False
+        card_source = "pool"
     
-    email_result = bot.get_and_remove_email()
-    if email_result is None:
-        return await interaction.response.send_message("❌ Email pool is empty.", ephemeral=True)
-    
-    # Unpack email result
-    if isinstance(email_result, tuple) and len(email_result) == 2:
-        email, was_last_email = email_result
+    # Use custom email or get from pool
+    was_last_email = False
+    if custom_email:
+        # Use custom email
+        email = custom_email
+        email_source = "custom"
     else:
-        # Fallback for old format
-        email = email_result
-        was_last_email = False
+        # Get email from pool
+        email_result = bot.get_and_remove_email()
+        if email_result is None:
+            return await interaction.response.send_message("❌ Email pool is empty.", ephemeral=True)
+        
+        # Unpack email result
+        if isinstance(email_result, tuple) and len(email_result) == 2:
+            email, was_last_email = email_result
+        else:
+            # Fallback for old format
+            email = email_result
+            was_last_email = False
+        email_source = "pool"
 
     command = f"{info['link']},{number},{EXP_MONTH}/{EXP_YEAR},{cvv},{ZIP_CODE},{email}"
     tip_line = f"Tip: ${info['tip']}"
 
-    bot.log_command_output(
-        command_type="wool_order",
-        user_id=interaction.user.id,
-        username=str(interaction.user),
-        channel_id=interaction.channel.id,
-        guild_id=interaction.guild.id if interaction.guild else None,
-        command_output=command,
-        tip_amount=info['tip'],
-        card_used=card,
-        email_used=email,
-        additional_data={"parsed_fields": info}
-    )
+    # Only log if using pool resources
+    if card_source == "pool" or email_source == "pool":
+        bot.log_command_output(
+            command_type="wool_order",
+            user_id=interaction.user.id,
+            username=str(interaction.user),
+            channel_id=interaction.channel.id,
+            guild_id=interaction.guild.id if interaction.guild else None,
+            command_output=command,
+            tip_amount=info['tip'],
+            card_used=card if card_source == "pool" else None,
+            email_used=email if email_source == "pool" else None,
+            additional_data={"parsed_fields": info, "card_source": card_source, "email_source": email_source}
+        )
 
     # Format output with email
-    output_message = f"```{command}```\n{tip_line}\n**Email used:** `{email}`"
+    email_text = f"`{email}` ({'custom' if email_source == 'custom' else 'pool'})"
+    output_message = f"```{command}```\n{tip_line}\n**Email used:** {email_text}"
+    
+    # Add source information
+    if card_source == "custom":
+        output_message += f"\n**Card:** Custom card used (not from pool)"
+    else:
+        output_message += f"\n**Card:** Pool card used"
     
     # Add warnings if pools are empty
     warnings = []
-    if was_last_card:
+    if was_last_card and card_source == "pool":
         warnings.append("⚠️ **Card pool is now empty!** Add more cards with `/add_card` or `/bulk_cards`")
-    if was_last_email:
+    if was_last_email and email_source == "pool":
         warnings.append("⚠️ **Email pool is now empty!** Add more emails with `/add_email` or `/bulk_emails`")
     
     if warnings:
@@ -770,7 +886,40 @@ async def leaderboard(interaction: discord.Interaction, limit: int = 10):
         word = 'point' if points == 1 else 'points'
         lines.append(f"{i}. <@{user_id}> — {points} {word}")
     
-    await interaction.response.send_message('\n'.join(lines), ephemeral=True)
+    message_content = '\n'.join(lines)
+    
+    # Check if message is too long for Discord (2000 char limit)
+    if len(message_content) > 1800:  # Leave some buffer
+        # Create a file with the leaderboard
+        import tempfile
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+            f.write(f"Top {len(entries)} Point Earners\n")
+            f.write("=" * 30 + "\n\n")
+            
+            # Write without Discord mentions for readability in file
+            for i, (user_id, points) in enumerate(entries, 1):
+                word = 'point' if points == 1 else 'points'
+                f.write(f"{i}. User {user_id} — {points} {word}\n")
+            temp_file_path = f.name
+        
+        try:
+            # Send as file attachment
+            with open(temp_file_path, 'rb') as f:
+                discord_file = discord.File(f, filename=f"leaderboard_top_{limit}.txt")
+                await interaction.response.send_message(
+                    f"📊 **Top {len(entries)} Point Earners** (sent as file due to length)",
+                    file=discord_file,
+                    ephemeral=True
+                )
+        finally:
+            # Clean up temp file
+            try:
+                os.unlink(temp_file_path)
+            except:
+                pass
+    else:
+        # Send as regular message
+        await interaction.response.send_message(message_content, ephemeral=True)
 
 @bot.tree.command(name='clearpoints', description='(Admin) Clear points for a user or all users')
 @app_commands.describe(user="Optional: user to clear points for")
