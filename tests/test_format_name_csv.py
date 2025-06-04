@@ -1,6 +1,7 @@
-import sys
 import types
+import sys
 import pathlib
+from types import SimpleNamespace
 
 class AttrStub:
     def __getattr__(self, name):
@@ -17,15 +18,14 @@ class DummyBotBase(AttrStub):
     def __init__(self, *args, **kwargs):
         pass
 
-# Prepare stub modules to satisfy imports
 discord_stub = AttrStub()
 discord_stub.Intents = DummyIntents
 discord_stub.app_commands = AttrStub()
-discord_stub.errors = types.SimpleNamespace(HTTPException=Exception)
-discord_stub.ext = types.SimpleNamespace(commands=types.SimpleNamespace(Bot=DummyBotBase))
-discord_stub.ui = types.SimpleNamespace(View=object, Button=object, button=lambda *a, **k: (lambda f: f))
+discord_stub.errors = SimpleNamespace(HTTPException=Exception)
+discord_stub.ext = SimpleNamespace(commands=SimpleNamespace(Bot=DummyBotBase))
+discord_stub.ui = SimpleNamespace(View=object, Button=object, button=lambda *a, **k: (lambda f: f))
 
-dotenv_stub = types.SimpleNamespace(load_dotenv=lambda: None)
+dotenv_stub = SimpleNamespace(load_dotenv=lambda: None)
 
 sys.modules.setdefault("discord", discord_stub)
 sys.modules.setdefault("discord.app_commands", discord_stub.app_commands)
@@ -35,7 +35,6 @@ sys.modules.setdefault("discord.ext.commands", discord_stub.ext.commands)
 sys.modules.setdefault("discord.ui", discord_stub.ui)
 sys.modules.setdefault("dotenv", dotenv_stub)
 
-# Load CombinedBot class without executing the whole script
 source_lines = []
 combinedbot_path = pathlib.Path(__file__).resolve().parents[1] / "combinedbot.py"
 with open(combinedbot_path, "r") as f:
@@ -49,21 +48,21 @@ exec("".join(source_lines), module.__dict__)
 CombinedBot = module.CombinedBot
 
 
-def test_normalize_two_words():
+def test_format_basic():
     bot = CombinedBot()
-    assert bot.normalize_name("john doe") == "John Doe"
+    assert bot.format_name_csv("john doe") == "John,Doe"
 
 
-def test_normalize_single_word():
+def test_format_with_comma_space():
     bot = CombinedBot()
-    assert bot.normalize_name("alice") == "Alice A"
+    assert bot.format_name_csv("john, doe") == "John,Doe"
 
 
-def test_normalize_empty():
+def test_format_single_word():
     bot = CombinedBot()
-    assert bot.normalize_name("") == ""
+    assert bot.format_name_csv("alice") == "Alice,A"
 
 
-def test_normalize_multi_word():
+def test_format_empty():
     bot = CombinedBot()
-    assert bot.normalize_name("charlie brown jr") == "Charlie Brown"
+    assert bot.format_name_csv("") == ""
