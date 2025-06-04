@@ -93,8 +93,13 @@ class CombinedBot(commands.Bot):
         conn.close()
 
     # Database helper methods
-    def get_and_remove_card(self) -> Optional[Tuple[str, str]]:
-        """Fetch the oldest card and remove it from the database"""
+    def get_and_remove_card(self) -> Optional[Tuple[str, str, bool]]:
+        """Fetch the oldest card and remove it from the database.
+
+        Returns a tuple of ``(number, cvv, is_last)`` where ``is_last`` is a
+        boolean indicating whether the pool is now empty. ``None`` is returned
+        if there are no cards left.
+        """
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
@@ -117,8 +122,13 @@ class CombinedBot(commands.Bot):
         # Return the card and whether this was the last one
         return number, cvv, remaining_cards == 0
 
-    def get_and_remove_email(self) -> Optional[str]:
-        """Fetch the oldest email and remove it from the database"""
+    def get_and_remove_email(self) -> Optional[Tuple[str, bool]]:
+        """Fetch the oldest email and remove it from the database.
+
+        Returns a tuple of ``(email, is_last)`` where ``is_last`` indicates if
+        the email pool became empty after this operation. ``None`` is returned
+        when the pool has no emails left.
+        """
         conn = sqlite3.connect(DB_PATH)
         cursor = conn.cursor()
 
