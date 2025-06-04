@@ -102,6 +102,12 @@ The bot will display which features are configured:
 👑 Owner ID: 123456789012345678
 ```
 
+## Running Tests
+
+```bash
+pytest
+```
+
 ## Command Reference
 
 ### For Everyone
