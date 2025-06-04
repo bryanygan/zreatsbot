@@ -58,7 +58,7 @@ class PaymentView(View):
             value="Name is **Bryan Gan**",
             inline=False
         )
-        await interaction.response.send_message(embed=embed, ephemeral=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
     
     @discord.ui.button(label='Venmo', style=ButtonStyle.primary, emoji='💙', custom_id='payment_venmo')
     async def venmo_button(self, interaction: discord.Interaction, button: Button):
@@ -76,7 +76,7 @@ class PaymentView(View):
             value="Friends & Family, no notes, emoji is fine\nLast 4 digits: **0054** (if required)",
             inline=False
         )
-        await interaction.response.send_message(embed=embed, ephemeral=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
     
     @discord.ui.button(label='PayPal', style=ButtonStyle.success, emoji='💚', custom_id='payment_paypal')
     async def paypal_button(self, interaction: discord.Interaction, button: Button):
@@ -94,7 +94,7 @@ class PaymentView(View):
             value="Friends & Family, no notes",
             inline=False
         )
-        await interaction.response.send_message(embed=embed, ephemeral=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
     
     @discord.ui.button(label='Crypto', style=ButtonStyle.secondary, emoji='🪙', custom_id='payment_crypto')
     async def crypto_button(self, interaction: discord.Interaction, button: Button):
@@ -112,7 +112,7 @@ class PaymentView(View):
             value="Message me for more details and wallet addresses",
             inline=False
         )
-        await interaction.response.send_message(embed=embed, ephemeral=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 class CombinedBot(commands.Bot):
     def __init__(self):
@@ -422,6 +422,7 @@ async def on_message(message):
             try:
                 await message.channel.edit(name=new_name)
                 rename_history.append(now)
+                await message.add_reaction("✅")
 
                 if content == "open":
                     await message.channel.send(f"ZR Eats is now OPEN! <@&{ROLE_PING_ID}>")
@@ -438,6 +439,7 @@ async def on_message(message):
                     await message.channel.send(embed=embed)
 
             except HTTPException as e:
+                await message.add_reaction("❌")
                 await message.channel.send(
                     f"{message.author.mention} ❌ Failed to rename channel: {e.status} {e.text}",
                     delete_after=10
