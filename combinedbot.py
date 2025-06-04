@@ -7,6 +7,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from discord.errors import HTTPException
+from discord.ui import View, Button
+from discord import ButtonStyle
 from dotenv import load_dotenv
 from datetime import datetime
 from pathlib import Path
@@ -35,6 +37,82 @@ LOGS_DIR = Path(__file__).parent / 'logs'
 
 # Rate limiting for channel renames
 rename_history = deque()
+
+class PaymentView(View):
+    def __init__(self):
+        super().__init__(timeout=None)  # Persistent view, no timeout
+    
+    @discord.ui.button(label='Zelle', style=ButtonStyle.danger, emoji='🏦', custom_id='payment_zelle')
+    async def zelle_button(self, interaction: discord.Interaction, button: Button):
+        embed = discord.Embed(
+            title="💳 Zelle Payment",
+            color=0xff0000  # Red color
+        )
+        embed.add_field(
+            name="Email:",
+            value="```ganbryanbts@gmail.com```",
+            inline=False
+        )
+        embed.add_field(
+            name="📝 Note:",
+            value="Name is **Bryan Gan**",
+            inline=False
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=False)
+    
+    @discord.ui.button(label='Venmo', style=ButtonStyle.primary, emoji='💙', custom_id='payment_venmo')
+    async def venmo_button(self, interaction: discord.Interaction, button: Button):
+        embed = discord.Embed(
+            title="💙 Venmo Payment",
+            color=0x0099ff  # Blue color
+        )
+        embed.add_field(
+            name="Username:",
+            value="```@BGHype```",
+            inline=False
+        )
+        embed.add_field(
+            name="📝 Note:",
+            value="Friends & Family, no notes, emoji is fine\nLast 4 digits: **0054** (if required)",
+            inline=False
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=False)
+    
+    @discord.ui.button(label='PayPal', style=ButtonStyle.success, emoji='💚', custom_id='payment_paypal')
+    async def paypal_button(self, interaction: discord.Interaction, button: Button):
+        embed = discord.Embed(
+            title="💚 PayPal Payment",
+            color=0x00ff00  # Green color
+        )
+        embed.add_field(
+            name="Email:",
+            value="```ganbryanbts@gmail.com```",
+            inline=False
+        )
+        embed.add_field(
+            name="📝 Note:",
+            value="Friends & Family, no notes",
+            inline=False
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=False)
+    
+    @discord.ui.button(label='Crypto', style=ButtonStyle.secondary, emoji='🪙', custom_id='payment_crypto')
+    async def crypto_button(self, interaction: discord.Interaction, button: Button):
+        embed = discord.Embed(
+            title="🪙 Crypto Payment",
+            color=0xffa500  # Orange color
+        )
+        embed.add_field(
+            name="Available:",
+            value="BTC, ETH, LTC, etc",
+            inline=False
+        )
+        embed.add_field(
+            name="📝 Note:",
+            value="Message me for more details and wallet addresses",
+            inline=False
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=False)
 
 class CombinedBot(commands.Bot):
     def __init__(self):
@@ -302,6 +380,8 @@ bot = CombinedBot()
 @bot.event
 async def on_ready():
     print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
+
+    bot.add_view(PaymentView())
     
     # Set bot status to invisible (appear offline)
     await bot.change_presence(status=discord.Status.invisible)
@@ -1189,6 +1269,17 @@ async def log_stats(interaction: discord.Interaction, month: str = None):
         
     except Exception as e:
         await interaction.response.send_message(f"❌ Error reading log file: {e}", ephemeral=True)
+
+@bot.tree.command(name='payments', description='Display payment methods')
+async def payments(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="Prin's Payments",
+        description="Select which payment method you would like to use!",
+        color=0x9932cc  # Purple color for the main embed
+    )
+    
+    view = PaymentView()
+    await interaction.response.send_message(embed=embed, view=view)
 
 # Run the bot
 if __name__ == '__main__':
