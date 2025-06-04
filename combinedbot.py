@@ -20,10 +20,8 @@ load_dotenv()
 # Configuration
 BOT_TOKEN = os.getenv('BOT_TOKEN') or os.getenv('DISCORD_TOKEN')
 OWNER_ID = int(os.getenv('OWNER_ID')) if os.getenv('OWNER_ID') else None
-POINTS_CHANNEL_ID = int(os.getenv('POINTS_CHANNEL_ID')) if os.getenv('POINTS_CHANNEL_ID') else None
 OPENER_CHANNEL_ID = int(os.getenv('OPENER_CHANNEL_ID')) if os.getenv('OPENER_CHANNEL_ID') else None
 ROLE_PING_ID = os.getenv('ROLE_PING_ID', '1352022044614590494')
-VIP_ROLE_ID = os.getenv('VIP_ROLE_ID', '1371247728646033550')
 ORDER_CHANNEL_MENTION = os.getenv('ORDER_CHANNEL_MENTION', '<#1350935337269985334>')
 
 # Constants for card formatting
@@ -33,7 +31,6 @@ ZIP_CODE = '19104'
 
 # Database paths
 DB_PATH = Path(__file__).parent / 'data' / 'pool.db'
-POINTS_DB_PATH = Path(__file__).parent / 'data' / 'points.db'
 LOGS_DIR = Path(__file__).parent / 'logs'
 
 # Rate limiting for channel renames
@@ -46,22 +43,19 @@ class CombinedBot(commands.Bot):
         intents.guilds = True
         super().__init__(command_prefix='!', intents=intents)
         
-        # Initialize databases
-        self.init_databases()
+        # Initialize database
+        self.init_database()
         
         # Ensure logs directory exists
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
-    def init_databases(self):
-        """Initialize both pool and points databases"""
+    def init_database(self):
+        """Initialize the pool database for cards and emails"""
         # Create data directory
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         
         # Initialize pool database (cards/emails)
         self.init_pool_db()
-        
-        # Initialize points database
-        self.init_points_db()
 
     def init_pool_db(self):
         """Initialize the pool database for cards and emails"""
@@ -92,21 +86,6 @@ class CombinedBot(commands.Bot):
             CREATE TABLE IF NOT EXISTS emails (
                 id    INTEGER PRIMARY KEY AUTOINCREMENT,
                 email TEXT    NOT NULL
-            )
-        ''')
-
-        conn.commit()
-        conn.close()
-
-    def init_points_db(self):
-        """Initialize the points database"""
-        conn = sqlite3.connect(POINTS_DB_PATH)
-        cursor = conn.cursor()
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS points (
-                user_id TEXT PRIMARY KEY,
-                points INTEGER DEFAULT 0
             )
         ''')
 
@@ -322,6 +301,11 @@ async def on_ready():
         print(f"Synced {len(synced)} commands")
     except Exception as e:
         print(f"Failed to sync commands: {e}")
+
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
 
     # Channel opener functionality
     if OPENER_CHANNEL_ID and message.channel.id == OPENER_CHANNEL_ID:
@@ -1196,17 +1180,13 @@ async def log_stats(interaction: discord.Interaction, month: str = None):
     except Exception as e:
         await interaction.response.send_message(f"❌ Error reading log file: {e}", ephemeral=True)
 
-# Import asyncio for backfill
-import asyncio
-
 # Run the bot
 if __name__ == '__main__':
     if not BOT_TOKEN:
         print("❌ Missing BOT_TOKEN in .env file")
         exit(1)
     
-    print("🚀 Starting combined Discord bot...")
-    print(f"📍 Points channel: {POINTS_CHANNEL_ID or 'Not configured'}")
+    print("🚀 Starting Discord bot...")
     print(f"🔓 Opener channel: {OPENER_CHANNEL_ID or 'Not configured'}")
     print(f"👑 Owner ID: {OWNER_ID or 'Not configured'}")
     
