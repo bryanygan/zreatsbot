@@ -355,7 +355,7 @@ class CombinedBot(commands.Bot):
 
     def normalize_name(self, name: str) -> str:
         """Normalize name into two words"""
-        cleaned = name.replace(",", " ").strip()    
+        cleaned = name.replace(",", " ").strip()
         parts = cleaned.split()
         if len(parts) >= 2:
             first = parts[0].strip().title()
@@ -364,6 +364,19 @@ class CombinedBot(commands.Bot):
         if len(parts) == 1:
             w = parts[0].strip().title()
             return f"{w} {w[0].upper()}"
+        return ''
+
+    def format_name_csv(self, name: str) -> str:
+        """Return name in 'Firstname,Lastname' format with no spaces around comma"""
+        cleaned = name.replace(",", " ").strip()
+        parts = cleaned.split()
+        if len(parts) >= 2:
+            first = parts[0].strip().title()
+            last = parts[1].strip().title()
+            return f"{first},{last}"
+        if len(parts) == 1:
+            w = parts[0].strip().title()
+            return f"{w},{w[0].upper()}"
         return ''
 
     def is_valid_field(self, value: str) -> bool:
@@ -774,13 +787,22 @@ async def wool_order(interaction: discord.Interaction, custom_email: str = None,
 
     # Create embed for clean output
     embed = discord.Embed(title="Wool Order", color=0xff6600)
-    
+
     # Add command output
     embed.add_field(name="", value=f"```{command}```", inline=False)
-    
+
     # Add email
     embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
-    
+
+    # Add parsed fields above tip if present
+    if bot.is_valid_field(info['name']):
+        formatted = bot.format_name_csv(info['name'])
+        embed.add_field(name="Name:", value=f"```{formatted}```", inline=False)
+    if bot.is_valid_field(info['addr2']):
+        embed.add_field(name="Address Line 2:", value=f"```{info['addr2']}```", inline=False)
+    if bot.is_valid_field(info['notes']):
+        embed.add_field(name="Delivery Notes:", value=f"```{info['notes']}```", inline=False)
+
     # Add tip amount
     embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
     
