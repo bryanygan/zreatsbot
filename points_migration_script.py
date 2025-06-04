@@ -272,34 +272,10 @@ if __name__ == "__main__":
         print("   1. Set POINTS_CHANNEL_ID in your .env file")
         print("   2. Start the combined bot: python combinedbot.py")
         print("   3. Test with /checkpoints to verify points are working")
+
     else:
         print("\n❌ Migration failed. Check the error messages above.")
         exit(1)
-
-def verify_migration(db_path):
-    """Verify the migration was successful"""
-    print("🔍 Verifying migration...")
-    
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT COUNT(*) FROM points")
-    total_users = cursor.fetchone()[0]
-    
-    cursor.execute("SELECT SUM(points) FROM points")
-    total_points = cursor.fetchone()[0] or 0
-    
-    cursor.execute("SELECT user_id, points FROM points ORDER BY points DESC LIMIT 5")
-    top_users = cursor.fetchall()
-    
-    conn.close()
-    
-    print(f"📈 Migration Summary:")
-    print(f"   • Total users: {total_users}")
-    print(f"   • Total points: {total_points}")
-    print(f"   • Top 5 users:")
-    for i, (user_id, points) in enumerate(top_users, 1):
-        print(f"     {i}. User {user_id}: {points} points")
 
 def find_quickdb_file():
     """Try to automatically find the quick.db file"""
