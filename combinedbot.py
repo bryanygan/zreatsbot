@@ -161,7 +161,7 @@ class PaymentView(View):
         )
         embed.add_field(
             name="Available:",
-            value="BTC, ETH, LTC, etc",
+            value="ETH, LTC, SOL, BTC, USDT, USDC",
             inline=False
         )
         embed.add_field(
