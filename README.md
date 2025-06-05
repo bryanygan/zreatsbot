@@ -71,7 +71,7 @@ A unified Discord bot that combines three essential functionalities:
 
 ## Configuration
 
-1. **Environment variables**: Create a `.env` file in the project root:
+1. **Environment variables**: Copy `.env.example` to `.env` and fill in your values:
 
    ```dotenv
    # Required
@@ -143,7 +143,8 @@ pytest
 combined-discord-bot/
 ├── combinedbot.py        # Main bot file
 ├── requirements.txt      # Python dependencies
-├── .env                 # Environment variables (create this)
+├── .env.example         # Sample environment file
+├── .env                 # Environment variables you create
 ├── README.md            # This file
 ├── data/                # Auto-created databases
 │   └── pool.db          # Cards and emails
