@@ -1,7 +1,5 @@
 import os
 import time
-import json
-import csv
 import sqlite3
 import discord
 from discord import app_commands
@@ -15,6 +13,24 @@ from pathlib import Path
 from collections import deque
 from typing import Dict, Any, Optional, Tuple
 import tempfile
+
+try:
+    from logging_utils import (
+        log_command_output,
+        get_recent_logs,
+        get_full_logs,
+        get_log_stats,
+    )
+except ModuleNotFoundError:  # pragma: no cover - fallback for tests
+    import pathlib
+    import sys
+    sys.path.append(str(pathlib.Path(__file__).resolve().parent))
+    from logging_utils import (
+        log_command_output,
+        get_recent_logs,
+        get_full_logs,
+        get_log_stats,
+    )
 
 # Load environment variables
 load_dotenv()
@@ -33,7 +49,6 @@ ZIP_CODE = '19104'
 
 # Database paths
 DB_PATH = Path(__file__).parent / 'data' / 'pool.db'
-LOGS_DIR = Path(__file__).parent / 'logs'
 
 # Rate limiting for channel renames
 rename_history = deque()
@@ -124,8 +139,6 @@ class CombinedBot(commands.Bot):
         # Initialize database
         self.init_database()
         
-        # Ensure logs directory exists
-        LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
     def init_database(self):
         """Initialize the pool database for cards and emails"""
@@ -229,107 +242,6 @@ class CombinedBot(commands.Bot):
         # Return the email and whether this was the last one
         return email, remaining_emails == 0
 
-    # Logging functionality
-    def log_command_output(self, command_type: str, user_id: int, username: str, 
-                          channel_id: int, guild_id: int, command_output: str,
-                          tip_amount: str = None, card_used: tuple = None, 
-                          email_used: str = None, additional_data: Dict[str, Any] = None):
-        """Log command output to multiple formats"""
-        timestamp = datetime.now()
-        
-        # Extract card digits
-        card_digits_9_12 = None
-        card_digits_9_16 = None
-        card_full = None
-        if card_used:
-            card_number, card_cvv = card_used
-            card_full = f"{card_number} CVV:{card_cvv}"
-            if len(card_number) >= 12:
-                card_digits_9_12 = card_number[8:12]
-            if len(card_number) >= 16:
-                card_digits_9_16 = card_number[8:16]
-        
-        log_entry = {
-            "timestamp": timestamp.isoformat(),
-            "command_type": command_type,
-            "command_output": command_output,
-            "email_used": email_used,
-            "card_full": card_full,
-            "card_digits_9_12": card_digits_9_12,
-            "card_digits_9_16": card_digits_9_16,
-            "additional_data": additional_data or {}
-        }
-        
-        # Log to JSON file
-        json_file = LOGS_DIR / f"commands_{timestamp.strftime('%Y%m')}.json"
-        self._log_to_json(json_file, log_entry)
-        
-        # Log to CSV file
-        csv_file = LOGS_DIR / f"commands_{timestamp.strftime('%Y%m')}.csv"
-        self._log_to_csv(csv_file, log_entry)
-        
-        # Log to daily text file
-        txt_file = LOGS_DIR / f"commands_{timestamp.strftime('%Y%m%d')}.txt"
-        self._log_to_txt(txt_file, log_entry, timestamp)
-
-    def _log_to_json(self, filename: Path, log_entry: Dict[str, Any]):
-        """Append log entry to JSON file"""
-        try:
-            if filename.exists():
-                with open(filename, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-            else:
-                data = []
-            
-            data.append(log_entry)
-            
-            with open(filename, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"Error logging to JSON: {e}")
-
-    def _log_to_csv(self, filename: Path, log_entry: Dict[str, Any]):
-        """Append log entry to CSV file"""
-        try:
-            headers = ["timestamp", "command_type", "command_output", 
-                      "email_used", "card_full", "card_digits_9_12"]
-            
-            file_exists = filename.exists()
-            
-            row_data = [
-                log_entry["timestamp"],
-                log_entry["command_type"],
-                log_entry["command_output"],
-                log_entry["email_used"],
-                log_entry["card_full"],
-                log_entry["card_digits_9_12"]
-            ]
-            
-            with open(filename, 'a', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                if not file_exists:
-                    writer.writerow(headers)
-                writer.writerow(row_data)
-        except Exception as e:
-            print(f"Error logging to CSV: {e}")
-
-    def _log_to_txt(self, filename: Path, log_entry: Dict[str, Any], timestamp: datetime):
-        """Append log entry to text file"""
-        try:
-            with open(filename, 'a', encoding='utf-8') as f:
-                f.write(f"\n{'='*80}\n")
-                f.write(f"TIMESTAMP: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n")
-                f.write(f"COMMAND TYPE: {log_entry['command_type']}\n")
-                if log_entry['email_used']:
-                    f.write(f"EMAIL USED: {log_entry['email_used']}\n")
-                if log_entry['card_full']:
-                    f.write(f"CARD USED: {log_entry['card_full']}\n")
-                if log_entry['card_digits_9_12']:
-                    f.write(f"CARD DIGITS 9-12: {log_entry['card_digits_9_12']}\n")
-                f.write(f"\nCOMMAND OUTPUT:\n{log_entry['command_output']}\n")
-                f.write(f"{'='*80}\n")
-        except Exception as e:
-            print(f"Error logging to TXT: {e}")
 
     # Utility functions
     async def fetch_order_embed(self, channel: discord.TextChannel) -> Optional[discord.Embed]:
@@ -541,7 +453,7 @@ async def fusion_assist(interaction: discord.Interaction, mode: app_commands.Cho
 
     # Only log if using pool resources
     if card_source == "pool":
-        bot.log_command_output(
+        log_command_output(
             command_type="fusion_assist",
             user_id=interaction.user.id,
             username=str(interaction.user),
@@ -690,7 +602,7 @@ async def fusion_order(interaction: discord.Interaction, custom_email: str = Non
 
     # Only log if using pool resources
     if card_source == "pool" or email_source == "pool":
-        bot.log_command_output(
+        log_command_output(
             command_type="fusion_order",
             user_id=interaction.user.id,
             username=str(interaction.user),
@@ -798,7 +710,7 @@ async def wool_order(interaction: discord.Interaction, custom_email: str = None,
 
     # Only log if using pool resources
     if card_source == "pool" or email_source == "pool":
-        bot.log_command_output(
+        log_command_output(
             command_type="wool_order",
             user_id=interaction.user.id,
             username=str(interaction.user),
@@ -1128,22 +1040,7 @@ async def full_logs(interaction: discord.Interaction, count: int = 5):
     if count > 50:
         return await interaction.response.send_message("❌ Maximum count is 50.", ephemeral=True)
     
-    # Get recent logs from JSON file
-    current_month = datetime.now().strftime('%Y%m')
-    json_file = LOGS_DIR / f"commands_{current_month}.json"
-    
-    if not json_file.exists():
-        return await interaction.response.send_message("❌ No logs found.", ephemeral=True)
-    
-    try:
-        with open(json_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        sorted_data = sorted(data, key=lambda x: x["timestamp"], reverse=True)
-        logs = sorted_data[:count]
-    except Exception as e:
-        return await interaction.response.send_message(f"❌ Error reading logs: {e}", ephemeral=True)
-    
+    logs = get_full_logs(count)
     if not logs:
         return await interaction.response.send_message("❌ No logs found.", ephemeral=True)
     
@@ -1195,22 +1092,8 @@ async def print_logs(interaction: discord.Interaction, count: int = 10):
     if count > 100:
         return await interaction.response.send_message("❌ Maximum count is 100.", ephemeral=True)
     
-    # Get recent logs from JSON file
-    current_month = datetime.now().strftime('%Y%m')
-    json_file = LOGS_DIR / f"commands_{current_month}.json"
-    
-    if not json_file.exists():
-        return await interaction.response.send_message("❌ No logs found.", ephemeral=True)
-    
-    try:
-        with open(json_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        sorted_data = sorted(data, key=lambda x: x["timestamp"], reverse=True)
-        logs = sorted_data[:count]
-    except Exception as e:
-        return await interaction.response.send_message(f"❌ Error reading logs: {e}", ephemeral=True)
-    
+    # Retrieve recent logs
+    logs = get_recent_logs(count)
     if not logs:
         return await interaction.response.send_message("❌ No logs found.", ephemeral=True)
     
@@ -1264,61 +1147,28 @@ async def log_stats(interaction: discord.Interaction, month: str = None):
     
     if month is None:
         month = datetime.now().strftime('%Y%m')
-    
-    json_file = LOGS_DIR / f"commands_{month}.json"
-    
-    if not json_file.exists():
-        return await interaction.response.send_message(f"❌ No log file found for month {month}.", ephemeral=True)
-    
-    try:
-        with open(json_file, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-        
-        stats = {
-            "total_commands": len(data),
-            "command_types": {},
-            "emails_used": set(),
-            "cards_used": set(),
-            "date_range": {"start": None, "end": None}
-        }
-        
-        for entry in data:
-            cmd_type = entry["command_type"]
-            stats["command_types"][cmd_type] = stats["command_types"].get(cmd_type, 0) + 1
-            
-            if entry.get("email_used"):
-                stats["emails_used"].add(entry["email_used"])
-            
-            if entry.get("card_digits_9_12"):
-                stats["cards_used"].add(entry["card_digits_9_12"])
-            
-            entry_date = entry["timestamp"]
-            if stats["date_range"]["start"] is None or entry_date < stats["date_range"]["start"]:
-                stats["date_range"]["start"] = entry_date
-            if stats["date_range"]["end"] is None or entry_date > stats["date_range"]["end"]:
-                stats["date_range"]["end"] = entry_date
-        
-        stats_text = f"""📊 **Command Statistics for {month}**
+
+    stats = get_log_stats(month)
+    if "error" in stats:
+        return await interaction.response.send_message(f"❌ {stats['error']}", ephemeral=True)
+
+    stats_text = f"""📊 **Command Statistics for {month}**
 
 **Total Commands:** {stats['total_commands']}
 **Unique Emails Used:** {len(stats['emails_used'])}
 **Unique Cards Used:** {len(stats['cards_used'])}
 
 **Commands by Type:**"""
-        
-        for cmd_type, count in stats['command_types'].items():
-            stats_text += f"\n  • {cmd_type}: {count}"
-        
-        stats_text += f"\n\n**Emails Used:** {', '.join(list(stats['emails_used']))}"
-        stats_text += f"\n**Card Digits 9-12 Used:** {', '.join(list(stats['cards_used']))}"
-        
-        if stats['date_range']['start']:
-            stats_text += f"\n**Date Range:** {stats['date_range']['start'][:10]} to {stats['date_range']['end'][:10]}"
-        
-        await interaction.response.send_message(stats_text, ephemeral=True)
-        
-    except Exception as e:
-        await interaction.response.send_message(f"❌ Error reading log file: {e}", ephemeral=True)
+    for cmd_type, count in stats['command_types'].items():
+        stats_text += f"\n  • {cmd_type}: {count}"
+
+    stats_text += f"\n\n**Emails Used:** {', '.join(list(stats['emails_used']))}"
+    stats_text += f"\n**Card Digits 9-12 Used:** {', '.join(list(stats['cards_used']))}"
+
+    if stats['date_range']['start']:
+        stats_text += f"\n**Date Range:** {stats['date_range']['start'][:10]} to {stats['date_range']['end'][:10]}"
+
+    await interaction.response.send_message(stats_text, ephemeral=True)
 
 @bot.tree.command(name='payments', description='Display payment methods')
 async def payments(interaction: discord.Interaction):
