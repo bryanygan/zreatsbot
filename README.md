@@ -17,6 +17,8 @@ A unified Discord bot that combines three essential functionalities:
 - **Custom card/email support** - Use your own cards/emails without touching the pool
 
 ### Channel Management
+- **`/open`** - Slash command to rename channel to "open🟢🟢" and send announcements
+- **`/close`** - Slash command to rename channel to "closed🔴🔴" and send closure notice
 - **`open`** message - Renames channel to "open🟢🟢" and sends announcements
 - **`close`/`closed`** message - Renames channel to "closed🔴🔴" and sends closure notice
 - **Rate limiting** - Maximum 2 renames per 10 minutes per Discord's limits
@@ -112,7 +114,7 @@ pytest
 
 ### For Everyone
 - In points channel: Post images to get role assignment (silent)
-- In opener channel: Type `open`, `close`, or `closed` to manage channel status
+- In opener channel: Use `/open` or `/close` (or type `open`, `close`, `closed`) to manage channel status
 
 ### Admin Only (Owner)
 #### Order Management

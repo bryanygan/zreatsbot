@@ -38,6 +38,48 @@ LOGS_DIR = Path(__file__).parent / 'logs'
 # Rate limiting for channel renames
 rename_history = deque()
 
+async def change_channel_status(channel: discord.TextChannel, status: str) -> Tuple[bool, str]:
+    """Rename the channel and send open/close announcements.
+
+    Returns ``(success, error_message)``.
+    ``status`` should be "open" or "close".
+    """
+    new_name = "open🟢🟢" if status == "open" else "closed🔴🔴"
+
+    now = time.monotonic()
+    while rename_history and now - rename_history[0] > 600:
+        rename_history.popleft()
+
+    if len(rename_history) >= 2:
+        return False, "Rename limit reached (2 per 10 min). Try again later."
+
+    try:
+        await channel.edit(name=new_name)
+        rename_history.append(now)
+
+        if status == "open":
+            await channel.send(f"ZR Eats is now OPEN! <@&{ROLE_PING_ID}>")
+            embed = discord.Embed(
+                title="ZR Eats is now OPEN!",
+                description=(
+                    f"We are now accepting orders! Click the order button in {ORDER_CHANNEL_MENTION} "
+                    "to place an order."
+                ),
+            )
+            await channel.send(embed=embed)
+        else:
+            embed = discord.Embed(
+                title="ZR Eats is now CLOSED.",
+                description=(
+                    "We are currently closed. Please come back later when we're open for new orders! "
+                    "Do not open a ticket, you will not get a response."
+                ),
+            )
+            await channel.send(embed=embed)
+        return True, ""
+    except HTTPException as e:
+        return False, f"Failed to rename channel: {e.status} {e.text}"
+
 class PaymentView(View):
     def __init__(self):
         super().__init__(timeout=None)  # Persistent view, no timeout
@@ -414,51 +456,52 @@ async def on_message(message):
     if OPENER_CHANNEL_ID and message.channel.id == OPENER_CHANNEL_ID:
         content = message.content.lower().strip()
         if content == "open":
-            new_name = "open🟢🟢"
+            status = "open"
         elif content in ("close", "closed"):
-            new_name = "closed🔴🔴"
+            status = "close"
         else:
             await bot.process_commands(message)
             return
 
-        now = time.monotonic()
-        # Remove entries older than 600 seconds
-        while rename_history and now - rename_history[0] > 600:
-            rename_history.popleft()
-
-        if len(rename_history) >= 2:
+        success, error = await change_channel_status(message.channel, status)
+        if success:
+            await message.add_reaction("✅")
+        else:
+            await message.add_reaction("❌")
             await message.channel.send(
-                f"{message.author.mention} ⚠️ Rename limit reached (2 per 10 min). Try again later.",
+                f"{message.author.mention} ❌ {error}",
                 delete_after=10
             )
-        else:
-            try:
-                await message.channel.edit(name=new_name)
-                rename_history.append(now)
-                await message.add_reaction("✅")
-
-                if content == "open":
-                    await message.channel.send(f"ZR Eats is now OPEN! <@&{ROLE_PING_ID}>")
-                    embed = discord.Embed(
-                        title="ZR Eats is now OPEN!",
-                        description=f"We are now accepting orders! Click the order button in {ORDER_CHANNEL_MENTION} to place an order."
-                    )
-                    await message.channel.send(embed=embed)
-                elif content in ("close", "closed"):
-                    embed = discord.Embed(
-                        title="ZR Eats is now CLOSED.",
-                        description="We are currently closed. Please come back later when we're open for new orders! Do not open a ticket, you will not get a response."
-                    )
-                    await message.channel.send(embed=embed)
-
-            except HTTPException as e:
-                await message.add_reaction("❌")
-                await message.channel.send(
-                    f"{message.author.mention} ❌ Failed to rename channel: {e.status} {e.text}",
-                    delete_after=10
-                )
 
     await bot.process_commands(message)
+
+# CHANNEL STATUS SLASH COMMANDS
+@bot.tree.command(name='open', description='Open the channel and send announcements')
+async def open_command(interaction: discord.Interaction):
+    if OPENER_CHANNEL_ID and interaction.channel.id != OPENER_CHANNEL_ID:
+        return await interaction.response.send_message(
+            "❌ This command can only be used in the opener channel.", ephemeral=True
+        )
+
+    success, error = await change_channel_status(interaction.channel, "open")
+    if success:
+        await interaction.response.send_message("✅ Channel opened.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"❌ {error}", ephemeral=True)
+
+
+@bot.tree.command(name='close', description='Close the channel and send notice')
+async def close_command(interaction: discord.Interaction):
+    if OPENER_CHANNEL_ID and interaction.channel.id != OPENER_CHANNEL_ID:
+        return await interaction.response.send_message(
+            "❌ This command can only be used in the opener channel.", ephemeral=True
+        )
+
+    success, error = await change_channel_status(interaction.channel, "close")
+    if success:
+        await interaction.response.send_message("✅ Channel closed.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"❌ {error}", ephemeral=True)
 
 # ORDER COMMANDS
 @bot.tree.command(name='fusion_assist', description='Format a Fusion assist order')
