@@ -1225,15 +1225,17 @@ def main():
         view = PaymentView()
         await interaction.response.send_message(embed=embed, view=view)
     
-    # Run the bot
-        if not BOT_TOKEN:
-            print("❌ Missing BOT_TOKEN in .env file")
-            exit(1)
-        
-        print("🚀 Starting Discord bot...")
-        print(f"🔓 Opener channel: {OPENER_CHANNEL_ID or 'Not configured'}")
-        print(f"👑 Owner ID: {OWNER_ID or 'Not configured'}")
-        
-        bot.run(BOT_TOKEN)
 if __name__ == "__main__":
     main()
+
+# Run the bot
+if not BOT_TOKEN:
+    print("❌ Missing BOT_TOKEN in .env file")
+    exit(1)
+
+print("🚀 Starting Discord bot...")
+print(f"🔓 Opener channel: {OPENER_CHANNEL_ID or 'Not configured'}")
+print(f"👑 Owner ID: {OWNER_ID or 'Not configured'}")
+
+bot = CombinedBot()
+bot.run(BOT_TOKEN)
