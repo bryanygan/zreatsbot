@@ -577,6 +577,32 @@ async def fusion_assist(interaction: discord.Interaction, mode: app_commands.Cho
     
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+@bot.tree.command(name='wool_details', description='Show parsed Wool order details')
+async def wool_details(interaction: discord.Interaction):
+    """Display parsed Wool order details without using pool resources."""
+    if not bot.owner_only(interaction):
+        return await interaction.response.send_message("❌ You are not authorized.", ephemeral=True)
+
+    embed = await bot.fetch_order_embed(interaction.channel)
+    if embed is None:
+        return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
+
+    info = bot.parse_fields(embed)
+
+    details = discord.Embed(title="Wool Order Details", color=0xff6600)
+    if bot.is_valid_field(info['link']):
+        details.add_field(name="Group Cart Link:", value=f"```{info['link']}```", inline=False)
+    if bot.is_valid_field(info['name']):
+        formatted = bot.format_name_csv(info['name'])
+        details.add_field(name="Name:", value=f"```{formatted}```", inline=False)
+    if bot.is_valid_field(info['addr2']):
+        details.add_field(name="Address Line 2:", value=f"```{info['addr2']}```", inline=False)
+    if bot.is_valid_field(info['notes']):
+        details.add_field(name="Delivery Notes:", value=f"```{info['notes']}```", inline=False)
+    details.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
+
+    await interaction.response.send_message(embed=details, ephemeral=True)
+
 @bot.tree.command(name='fusion_order', description='Format a Fusion order with email')
 @app_commands.describe(
     custom_email="Optional: Use custom email (bypasses pool)",
