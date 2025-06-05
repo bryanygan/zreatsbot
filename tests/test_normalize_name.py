@@ -36,16 +36,12 @@ sys.modules.setdefault("discord.ui", discord_stub.ui)
 sys.modules.setdefault("dotenv", dotenv_stub)
 
 # Load CombinedBot class without executing the whole script
-source_lines = []
+import importlib
+
 combinedbot_path = pathlib.Path(__file__).resolve().parents[1] / "combinedbot.py"
-with open(combinedbot_path, "r") as f:
-    for line in f:
-        if line.startswith("bot = CombinedBot()"):
-            break
-        source_lines.append(line)
-module = types.ModuleType("combinedbot_partial")
-module.__file__ = str(combinedbot_path)
-exec("".join(source_lines), module.__dict__)
+spec = importlib.util.spec_from_file_location("combinedbot", combinedbot_path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
 CombinedBot = module.CombinedBot
 
 
