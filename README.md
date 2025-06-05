@@ -1,9 +1,8 @@
 # Combined Discord Bot
 
-A unified Discord bot that combines three essential functionalities:
+A unified Discord bot that combines two essential functionalities:
 1. **Order Command Generation** - Creates formatted commands for Fusion Assist, Fusion Order, and Wool Order with card/email pool management
 2. **Channel Management** - Opens/closes channels with rate limiting and announcements
-3. **Role Assignment** - Automatically assigns roles to users who post images
 
 ## Features
 
@@ -23,11 +22,6 @@ A unified Discord bot that combines three essential functionalities:
 - **`close`/`closed`** message - Renames channel to "closed🔴🔴" and sends closure notice
 - **Rate limiting** - Maximum 2 renames per 10 minutes per Discord's limits
 - **Role pinging** and embed announcements
-
-### Role Assignment
-- **Automatic role assignment** for image posts in designated channel
-- **Silent operation** - No messages or notifications
-- **Smart role checking** - Only adds role if user doesn't already have it
 
 ### Admin Pool Management (Owner Only)
 - **`/add_card`** - Add single card to pool
@@ -79,10 +73,8 @@ A unified Discord bot that combines three essential functionalities:
    OWNER_ID=123456789012345678
    
    # Optional - comment out features you don't need
-   POINTS_CHANNEL_ID=1234567890123456789  # For role assignment
    OPENER_CHANNEL_ID=1234567890123456789  # For open/close commands
    ROLE_PING_ID=1352022044614590494       # Role to ping when opening
-   VIP_ROLE_ID=1371247728646033550        # VIP role for redemptions
    ORDER_CHANNEL_MENTION=<#1350935337269985334>  # Channel mention in announcements
    ```
 
@@ -99,7 +91,6 @@ python combinedbot.py
 The bot will display which features are configured:
 ```
 🚀 Starting combined Discord bot...
-📍 Points channel: 1234567890123456789
 🔓 Opener channel: 1234567890123456789
 👑 Owner ID: 123456789012345678
 ```
@@ -113,7 +104,6 @@ pytest
 ## Command Reference
 
 ### For Everyone
-- In points channel: Post images to get role assignment (silent)
 - In opener channel: Use `/open` or `/close` (or type `open`, `close`, `closed`) to manage channel status
 
 ### Admin Only (Owner)
@@ -194,10 +184,8 @@ All order commands now support custom cards and emails that bypass the pool:
 - `OWNER_ID` - Discord user ID for admin commands
 
 ### Optional Settings (comment out if not using)
-- `POINTS_CHANNEL_ID` - Channel where images trigger role assignment
 - `OPENER_CHANNEL_ID` - Channel where open/close commands work
 - `ROLE_PING_ID` - Role to ping when opening (default: 1352022044614590494)
-- `VIP_ROLE_ID` - Role assigned with "Perm Fee" redemption (default: 1371247728646033550)
 - `ORDER_CHANNEL_MENTION` - Channel mention in open announcement (default: <#1350935337269985334>)
 
 ### Pool Constants
@@ -218,10 +206,6 @@ The following are hardcoded but can be modified in the source:
 - Ensure the ticket bot's first message contains at least 2 embeds
 - The bot looks for the second embed in the first message of the channel
 
-**Role assignment not working**
-- Verify `POINTS_CHANNEL_ID` is set correctly
-- Check that the bot has permissions to manage roles
-- Ensure the target role ID (1350935336435449969) exists and bot can assign it
 
 **Channel rename not working**
 - Check bot has "Manage Channels" permission
@@ -237,7 +221,6 @@ The following are hardcoded but can be modified in the source:
 - Bot needs appropriate permissions in each channel it operates in:
   - View Channel, Send Messages, Read Message History (all channels)
   - Manage Channels (opener channel)
-  - Manage Roles (for role assignment)
 
 ## Security Considerations
 
@@ -257,12 +240,6 @@ EXP_YEAR = '25'   # 2025
 ZIP_CODE = '90210'  # Beverly Hills
 ```
 
-### Changing Role Assignment Target
-Modify the role ID in the source file:
-```python
-# In the on_message event
-target_role_id = 1350935336435449969  # Change this ID
-```
 
 ## Support & Contributing
 
