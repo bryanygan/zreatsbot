@@ -284,6 +284,17 @@ class CombinedBot(commands.Bot):
         # Return the email and whether this was the last one
         return email, remaining_emails == 0
 
+    def get_pool_counts(self) -> Tuple[int, int]:
+        """Return the current card and email counts in the pool."""
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(*) FROM cards')
+        card_count = cursor.fetchone()[0]
+        cursor.execute('SELECT COUNT(*) FROM emails')
+        email_count = cursor.fetchone()[0]
+        conn.close()
+        return card_count, email_count
+
 
     # Utility functions
     async def fetch_order_embed(self, channel: discord.TextChannel) -> Optional[discord.Embed]:
@@ -523,13 +534,14 @@ def main():
         # Add tip amount
         embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
         
-        # Add footer only for warnings
+        card_count, email_count = bot.get_pool_counts()
         warnings = []
         if was_last_card and card_source == "pool":
             warnings.append("⚠️ Card pool empty!")
-        
-        if warnings:
-            embed.set_footer(text=" | ".join(warnings))
+
+        footer_parts = [f"Cards: {card_count}", f"Emails: {email_count}"]
+        footer_parts.extend(warnings)
+        embed.set_footer(text=" | ".join(footer_parts))
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
     
@@ -671,15 +683,16 @@ def main():
         # Add tip amount
         embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
         
-        # Add footer only for warnings
+        card_count, email_count = bot.get_pool_counts()
         warnings = []
         if was_last_card and card_source == "pool":
             warnings.append("⚠️ Card pool empty!")
         if was_last_email and email_source == "pool":
             warnings.append("⚠️ Email pool empty!")
-        
-        if warnings:
-            embed.set_footer(text=" | ".join(warnings))
+
+        footer_parts = [f"Cards: {card_count}", f"Emails: {email_count}"]
+        footer_parts.extend(warnings)
+        embed.set_footer(text=" | ".join(footer_parts))
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
     
@@ -788,15 +801,16 @@ def main():
         # Add tip amount
         embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
         
-        # Add footer only for warnings
+        card_count, email_count = bot.get_pool_counts()
         warnings = []
         if was_last_card and card_source == "pool":
             warnings.append("⚠️ Card pool empty!")
         if was_last_email and email_source == "pool":
             warnings.append("⚠️ Email pool empty!")
-        
-        if warnings:
-            embed.set_footer(text=" | ".join(warnings))
+
+        footer_parts = [f"Cards: {card_count}", f"Emails: {email_count}"]
+        footer_parts.extend(warnings)
+        embed.set_footer(text=" | ".join(footer_parts))
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
     
