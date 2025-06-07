@@ -313,7 +313,7 @@ class CombinedBot(commands.Bot):
         return {
             'link': data.get('Group Cart Link'),
             'name': data.get('Name', '').strip(),
-            'addr2': data.get('Address Line 2', '').strip(),
+            'addr2': data.get('Apt / Suite / Floor', '').strip(),
             'notes': data.get('Delivery Notes', '').strip(),
             'tip': data.get('Tip Amount', '').strip()
         }
@@ -564,7 +564,7 @@ def main():
             formatted = bot.format_name_csv(info['name'])
             details.add_field(name="Name:", value=f"```{formatted}```", inline=False)
         if bot.is_valid_field(info['addr2']):
-            details.add_field(name="Address Line 2:", value=f"```{info['addr2']}```", inline=False)
+            details.add_field(name="Apt / Suite / Floor:", value=f"```{info['addr2']}```", inline=False)
         if bot.is_valid_field(info['notes']):
             details.add_field(name="Delivery Notes:", value=f"```{info['notes']}```", inline=False)
         details.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
@@ -794,7 +794,7 @@ def main():
             formatted = bot.format_name_csv(info['name'])
             embed.add_field(name="Name:", value=f"```{formatted}```", inline=False)
         if bot.is_valid_field(info['addr2']):
-            embed.add_field(name="Address Line 2:", value=f"```{info['addr2']}```", inline=False)
+            embed.add_field(name="Apt / Suite / Floor:", value=f"```{info['addr2']}```", inline=False)
         if bot.is_valid_field(info['notes']):
             embed.add_field(name="Delivery Notes:", value=f"```{info['notes']}```", inline=False)
     
