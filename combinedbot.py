@@ -313,7 +313,7 @@ class CombinedBot(commands.Bot):
         return {
             'link': data.get('Group Cart Link'),
             'name': data.get('Name', '').strip(),
-            'addr2': data.get('Apt / Suite / Floor', '').strip(),
+            'addr2': data.get('Apt / Suite / Floor:', '').strip(),
             'notes': data.get('Delivery Notes', '').strip(),
             'tip': data.get('Tip Amount', '').strip()
         }
