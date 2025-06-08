@@ -4,6 +4,9 @@ from pathlib import Path
 # Path to the SQLite database file
 DB_PATH = Path(__file__).parent / 'data' / 'pool.db'
 
+# Module-level database connection
+DB_CONN = None
+
 
 def init_db():
     """
@@ -53,25 +56,36 @@ def init_db():
     conn.close()
 
 
+def get_connection():
+    """Return the module-level SQLite connection."""
+    return DB_CONN
+
+
+def close_connection():
+    """Close the module-level SQLite connection."""
+    global DB_CONN
+    if DB_CONN is not None:
+        DB_CONN.close()
+        DB_CONN = None
+
+
 def get_and_remove_card():
     """
     Fetch the oldest card (by id) from the pool and remove it from the database.
     Returns:
         tuple: (card_number, cvv) if available, or None if no cards left.
     """
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('SELECT id, number, cvv FROM cards ORDER BY id LIMIT 1')
     row = cursor.fetchone()
     if not row:
-        conn.close()
         return None
 
     card_id, number, cvv = row
     cursor.execute('DELETE FROM cards WHERE id = ?', (card_id,))
     conn.commit()
-    conn.close()
     return number, cvv
 
 
@@ -81,21 +95,31 @@ def get_and_remove_email():
     Returns:
         str: email address if available, or None if no emails left.
     """
-    conn = sqlite3.connect(DB_PATH)
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('SELECT id, email FROM emails ORDER BY id LIMIT 1')
     row = cursor.fetchone()
     if not row:
-        conn.close()
         return None
 
     email_id, email = row
     cursor.execute('DELETE FROM emails WHERE id = ?', (email_id,))
     conn.commit()
-    conn.close()
     return email
 
 
-# Initialize DB on import
+def get_pool_counts() -> tuple:
+    """Return the current counts of cards and emails."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) FROM cards')
+    card_count = cursor.fetchone()[0]
+    cursor.execute('SELECT COUNT(*) FROM emails')
+    email_count = cursor.fetchone()[0]
+    return card_count, email_count
+
+
+# Initialize DB on import and create the shared connection
 init_db()
+DB_CONN = sqlite3.connect(DB_PATH, check_same_thread=False)

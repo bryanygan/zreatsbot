@@ -13,6 +13,27 @@ from pathlib import Path
 from collections import deque
 from typing import Dict, Any, Optional, Tuple
 import tempfile
+try:
+    from db import (
+        get_and_remove_card as db_get_and_remove_card,
+        get_and_remove_email as db_get_and_remove_email,
+        get_pool_counts as db_get_pool_counts,
+        close_connection,
+        init_db,
+    )
+except ModuleNotFoundError:  # pragma: no cover - fallback for tests
+    import importlib.util
+    import pathlib
+    import sys
+    db_path = pathlib.Path(__file__).resolve().parent / "db.py"
+    spec = importlib.util.spec_from_file_location("db", db_path)
+    db = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(db)
+    db_get_and_remove_card = db.get_and_remove_card
+    db_get_and_remove_email = db.get_and_remove_email
+    db_get_pool_counts = db.get_pool_counts
+    close_connection = db.close_connection
+    init_db = db.init_db
 
 try:
     from logging_utils import (
@@ -184,46 +205,16 @@ class CombinedBot(commands.Bot):
 
     def init_database(self):
         """Initialize the pool database for cards and emails"""
-        # Create data directory
-        DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        
-        # Initialize pool database (cards/emails)
-        self.init_pool_db()
+        init_db()
 
     def init_pool_db(self):
         """Initialize the pool database for cards and emails"""
-        if DB_PATH.exists():
-            try:
-                with DB_PATH.open('rb') as f:
-                    header = f.read(16)
-                if not header.startswith(b"SQLite format 3\x00"):
-                    DB_PATH.unlink()
-            except Exception:
-                try:
-                    DB_PATH.unlink()
-                except Exception:
-                    pass
+        init_db()
 
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS cards (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                number TEXT NOT NULL,
-                cvv    TEXT NOT NULL
-            )
-        ''')
-
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS emails (
-                id    INTEGER PRIMARY KEY AUTOINCREMENT,
-                email TEXT    NOT NULL
-            )
-        ''')
-
-        conn.commit()
-        conn.close()
+    async def close(self):
+        """Close the bot and the shared database connection."""
+        close_connection()
+        await super().close()
 
     # Database helper methods
     def get_and_remove_card(self) -> Optional[Tuple[str, str, bool]]:
@@ -233,27 +224,15 @@ class CombinedBot(commands.Bot):
         boolean indicating whether the pool is now empty. ``None`` is returned
         if there are no cards left.
         """
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-
-        cursor.execute('SELECT id, number, cvv FROM cards ORDER BY id LIMIT 1')
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
+        result = db_get_and_remove_card()
+        if result is None:
             return None
 
-        card_id, number, cvv = row
-        cursor.execute('DELETE FROM cards WHERE id = ?', (card_id,))
-        
-        # Check if this was the last card
-        cursor.execute('SELECT COUNT(*) FROM cards')
-        remaining_cards = cursor.fetchone()[0]
-        
-        conn.commit()
-        conn.close()
-        
-        # Return the card and whether this was the last one
-        return number, cvv, remaining_cards == 0
+        number, cvv = result
+
+        card_count, _ = db_get_pool_counts()
+
+        return number, cvv, card_count == 0
 
     def get_and_remove_email(self) -> Optional[Tuple[str, bool]]:
         """Fetch the oldest email and remove it from the database.
@@ -262,38 +241,19 @@ class CombinedBot(commands.Bot):
         the email pool became empty after this operation. ``None`` is returned
         when the pool has no emails left.
         """
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-
-        cursor.execute('SELECT id, email FROM emails ORDER BY id LIMIT 1')
-        row = cursor.fetchone()
-        if not row:
-            conn.close()
+        result = db_get_and_remove_email()
+        if result is None:
             return None
 
-        email_id, email = row
-        cursor.execute('DELETE FROM emails WHERE id = ?', (email_id,))
-        
-        # Check if this was the last email
-        cursor.execute('SELECT COUNT(*) FROM emails')
-        remaining_emails = cursor.fetchone()[0]
-        
-        conn.commit()
-        conn.close()
-        
-        # Return the email and whether this was the last one
-        return email, remaining_emails == 0
+        email = result
+
+        _, email_count = db_get_pool_counts()
+
+        return email, email_count == 0
 
     def get_pool_counts(self) -> Tuple[int, int]:
         """Return the current card and email counts in the pool."""
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute('SELECT COUNT(*) FROM cards')
-        card_count = cursor.fetchone()[0]
-        cursor.execute('SELECT COUNT(*) FROM emails')
-        email_count = cursor.fetchone()[0]
-        conn.close()
-        return card_count, email_count
+        return db_get_pool_counts()
 
 
     # Utility functions
