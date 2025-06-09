@@ -5,6 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from ..views import PaymentView
+from ..utils import helpers
 from ..utils.helpers import (
     fetch_order_embed,
     parse_fields,
@@ -349,4 +350,31 @@ def setup(bot: commands.Bot):
         )
         view = PaymentView()
         await interaction.response.send_message(embed=embed, view=view)
+
+    @bot.tree.command(name='send_tracking', description='Send order tracking for this ticket')
+    async def send_tracking(interaction: discord.Interaction):
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+
+        embed = await fetch_order_embed(interaction.channel)
+        if embed is None:
+            return await interaction.response.send_message('❌ Could not find order embed.', ephemeral=True)
+
+        info = parse_fields(embed)
+        name = info.get('name', '').lower()
+        addr = info.get('address', info.get('addr2', '')).lower()
+        data = helpers.ORDER_WEBHOOK_CACHE.get((name, addr))
+        if not data:
+            return await interaction.response.send_message('❌ No matching webhook found.', ephemeral=True)
+
+        e = discord.Embed(title='Order Placed', url=data.get('tracking'), color=0x00ff00)
+        e.add_field(name='Store', value=data.get('store'), inline=False)
+        e.add_field(name='Estimated Arrival', value=data.get('eta'), inline=False)
+        e.add_field(name='Order Items', value=data.get('items'), inline=False)
+        e.add_field(name='Name', value=data.get('name'), inline=False)
+        e.add_field(name='Delivery Address', value=data.get('address'), inline=False)
+        e.set_footer(text='Watch the tracking link for updates!')
+
+        await interaction.response.send_message(embed=e)
+        helpers.ORDER_WEBHOOK_CACHE.pop((name, addr), None)
 

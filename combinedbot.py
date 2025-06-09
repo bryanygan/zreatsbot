@@ -186,6 +186,14 @@ def main():
             else:
                 await message.add_reaction("❌")
                 await message.channel.send(f"{message.author.mention} ❌ {error}", delete_after=10)
+
+        if message.webhook_id and message.embeds:
+            data = helpers.parse_webhook_order(message.embeds[0])
+            name = data.get('name', '').lower()
+            addr = data.get('address', '').lower()
+            if name and addr:
+                helpers.ORDER_WEBHOOK_CACHE[(name, addr)] = data
+
         await bot.process_commands(message)
 
     channel_commands.setup(bot)

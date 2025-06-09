@@ -11,6 +11,7 @@ A unified Discord bot that combines two essential functionalities:
 - **`/fusion_order`** - Generate Fusion order commands with email from pool
 - **`/wool_order`** - Generate Wool order commands
 - **Automatic embed parsing** from ticket bots
+- **Order webhook tracking** - Use `/send_tracking` after a webhook posts to send tracking info to the ticket
 - **Card & Email pools** with SQLite storage
 - **Comprehensive logging** to JSON, CSV, and TXT files
 - **Custom card/email support** - Use your own cards/emails without touching the pool
