@@ -5,6 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from ..views import PaymentView
+from ..utils import helpers
 from ..utils.helpers import (
     fetch_order_embed,
     parse_fields,
@@ -21,6 +22,8 @@ EXP_MONTH = '06'
 EXP_YEAR = '30'
 ZIP_CODE = '19104'
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db')
+# channel where order webhooks are posted
+WEBHOOK_CHANNEL_ID = helpers.WEBHOOK_CHANNEL_ID
 
 
 def setup(bot: commands.Bot):
@@ -349,4 +352,60 @@ def setup(bot: commands.Bot):
         )
         view = PaymentView()
         await interaction.response.send_message(embed=embed, view=view)
+
+    @bot.tree.command(name='send_tracking', description='Send order tracking for this ticket')
+    async def send_tracking(interaction: discord.Interaction):
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+
+        embed = await fetch_order_embed(interaction.channel)
+        if embed is None:
+            return await interaction.response.send_message('❌ Could not find order embed.', ephemeral=True)
+
+        info = parse_fields(embed)
+        name = info.get('name', '').lower()
+        addr = info.get('address', info.get('addr2', '')).lower()
+        key = (name, addr)
+        data = helpers.ORDER_WEBHOOK_CACHE.get(key)
+        if not data:
+            channel = bot.get_channel(WEBHOOK_CHANNEL_ID)
+            if channel:
+                async for msg in channel.history(limit=50):
+                    if not msg.embeds:
+                        continue
+                    d = helpers.parse_webhook_order(msg.embeds[0])
+                    if d.get('name', '').lower() == name and d.get('address', '').lower() == addr:
+                        data = d
+                        helpers.ORDER_WEBHOOK_CACHE[key] = d
+                        print(f"[DEBUG] found webhook in history for {key}")
+                        break
+        if not data:
+            cache_keys = ", ".join([f"{n}|{a}" for n, a in helpers.ORDER_WEBHOOK_CACHE.keys()]) or "<empty>"
+            await interaction.response.send_message('❌ No matching webhook found.', ephemeral=True)
+            print(f"[DEBUG] send_tracking miss for {key}; cache keys: {cache_keys}")
+            return
+
+        e = discord.Embed(title='Order Placed', url=data.get('tracking'), color=0x00ff00)
+        e.add_field(name='Store', value=data.get('store'), inline=False)
+        e.add_field(name='Estimated Arrival', value=data.get('eta'), inline=False)
+        e.add_field(name='Order Items', value=data.get('items'), inline=False)
+        e.add_field(name='Name', value=data.get('name'), inline=False)
+        e.add_field(name='Delivery Address', value=data.get('address'), inline=False)
+        e.set_footer(text='Watch the tracking link for updates!')
+
+        await interaction.response.send_message(embed=e)
+        helpers.ORDER_WEBHOOK_CACHE.pop((name, addr), None)
+        print(f"[DEBUG] send_tracking delivered for {key}")
+
+    @bot.tree.command(name='debug_webhooks', description='List cached webhook orders')
+    async def debug_webhooks(interaction: discord.Interaction):
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+
+        if not helpers.ORDER_WEBHOOK_CACHE:
+            return await interaction.response.send_message('Cache is empty.', ephemeral=True)
+
+        lines = [f"{n} | {a} -> {d.get('store')}" for (n, a), d in helpers.ORDER_WEBHOOK_CACHE.items()]
+        message = '\n'.join(lines)
+        await interaction.response.send_message(f'```\n{message}\n```', ephemeral=True)
 

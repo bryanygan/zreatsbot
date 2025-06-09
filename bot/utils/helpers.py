@@ -3,6 +3,11 @@ import discord
 from typing import Optional
 
 OWNER_ID = int(os.getenv('OWNER_ID')) if os.getenv('OWNER_ID') else None
+# default channel where webhook orders are posted
+WEBHOOK_CHANNEL_ID = int(os.getenv('WEBHOOK_CHANNEL_ID', '1352067371006693499'))
+
+# cache for parsed webhook orders keyed by (name, address)
+ORDER_WEBHOOK_CACHE = {}
 
 async def fetch_order_embed(channel: discord.TextChannel) -> Optional[discord.Embed]:
     try:
@@ -18,9 +23,23 @@ def parse_fields(embed: discord.Embed) -> dict:
     return {
         'link': data.get('Group Cart Link'),
         'name': data.get('Name', '').strip(),
+        'address': data.get('Delivery Address', '').strip(),
         'addr2': data.get('Apt / Suite / Floor:', '').strip(),
         'notes': data.get('Delivery Notes', '').strip(),
         'tip': data.get('Tip Amount', '').strip(),
+    }
+
+
+def parse_webhook_order(embed: discord.Embed) -> dict:
+    data = {field.name: field.value for field in embed.fields}
+    tracking_url = getattr(embed, "url", None) or getattr(getattr(embed, "author", None), "url", "")
+    return {
+        'store': data.get('Store', '').strip(),
+        'eta': data.get('Estimated Arrival', '').strip(),
+        'name': data.get('Name', '').strip(),
+        'address': data.get('Delivery Address', '').strip(),
+        'items': data.get('Order Items', '').strip(),
+        'tracking': tracking_url.strip() if tracking_url else '',
     }
 
 def normalize_name(name: str) -> str:

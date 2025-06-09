@@ -89,6 +89,8 @@ OWNER_ID = int(os.getenv('OWNER_ID')) if os.getenv('OWNER_ID') else None
 OPENER_CHANNEL_ID = int(os.getenv('OPENER_CHANNEL_ID')) if os.getenv('OPENER_CHANNEL_ID') else None
 ROLE_PING_ID = os.getenv('ROLE_PING_ID', '1352022044614590494')
 ORDER_CHANNEL_MENTION = os.getenv('ORDER_CHANNEL_MENTION', '<#1350935337269985334>')
+# channel where order webhooks are posted
+WEBHOOK_CHANNEL_ID = helpers.WEBHOOK_CHANNEL_ID
 
 EXP_MONTH = '06'
 EXP_YEAR = '30'
@@ -186,6 +188,15 @@ def main():
             else:
                 await message.add_reaction("❌")
                 await message.channel.send(f"{message.author.mention} ❌ {error}", delete_after=10)
+
+        if message.webhook_id and message.channel.id == WEBHOOK_CHANNEL_ID and message.embeds:
+            data = helpers.parse_webhook_order(message.embeds[0])
+            name = data.get('name', '').lower()
+            addr = data.get('address', '').lower()
+            if name and addr:
+                helpers.ORDER_WEBHOOK_CACHE[(name, addr)] = data
+                print(f"[DEBUG] stored webhook for {(name, addr)}")
+
         await bot.process_commands(message)
 
     channel_commands.setup(bot)
