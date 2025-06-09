@@ -13,6 +13,8 @@ from pathlib import Path
 from collections import deque
 from typing import Dict, Any, Optional, Tuple
 import tempfile
+import re
+
 try:
     from db import (
         get_and_remove_card as db_get_and_remove_card,
@@ -352,6 +354,104 @@ class CombinedBot(commands.Bot):
     def owner_only(self, interaction: discord.Interaction) -> bool:
         """Check if user is owner"""
         return OWNER_ID and interaction.user.id == OWNER_ID
+
+class CardValidator:
+    """Utility class for validating credit card information"""
+    
+    @staticmethod
+    def validate_card_number(card_number: str) -> tuple[bool, str]:
+        """
+        Validate card number format and basic checksums
+        
+        Args:
+            card_number: The card number string to validate
+            
+        Returns:
+            tuple: (is_valid, error_message)
+        """
+        # Remove any spaces or dashes
+        cleaned_number = re.sub(r'[\s\-]', '', card_number)
+        
+        # Check if it contains only digits
+        if not cleaned_number.isdigit():
+            return False, "Card number must contain only digits"
+        
+        # Check length (13-19 digits for most card types)
+        if len(cleaned_number) < 13 or len(cleaned_number) > 19:
+            return False, f"Card number must be 13-19 digits (got {len(cleaned_number)})"
+        
+        # Luhn algorithm check
+        if not CardValidator._luhn_check(cleaned_number):
+            return False, "Card number failed Luhn algorithm validation"
+        
+        return True, ""
+    
+    @staticmethod
+    def validate_cvv(cvv: str, card_number: str = None) -> tuple[bool, str]:
+        """
+        Validate CVV format
+        
+        Args:
+            cvv: The CVV string to validate
+            card_number: Optional card number for enhanced validation
+            
+        Returns:
+            tuple: (is_valid, error_message)
+        """
+        # Remove any spaces
+        cleaned_cvv = cvv.strip()
+        
+        # Check if it contains only digits
+        if not cleaned_cvv.isdigit():
+            return False, "CVV must contain only digits"
+        
+        # Check length (3-4 digits)
+        if len(cleaned_cvv) < 3 or len(cleaned_cvv) > 4:
+            return False, f"CVV must be 3-4 digits (got {len(cleaned_cvv)})"
+        
+        # Enhanced validation based on card type (if card number provided)
+        if card_number:
+            cleaned_card = re.sub(r'[\s\-]', '', card_number)
+            # American Express cards start with 34 or 37 and use 4-digit CVV
+            if cleaned_card.startswith(('34', '37')) and len(cleaned_cvv) != 4:
+                return False, "American Express cards require 4-digit CVV"
+            # Most other cards use 3-digit CVV
+            elif not cleaned_card.startswith(('34', '37')) and len(cleaned_cvv) != 3:
+                return False, "This card type requires 3-digit CVV"
+        
+        return True, ""
+    
+    @staticmethod
+    def _luhn_check(card_number: str) -> bool:
+        """
+        Implement Luhn algorithm for card number validation
+        
+        Args:
+            card_number: Clean card number string (digits only)
+            
+        Returns:
+            bool: True if valid according to Luhn algorithm
+        """
+        def luhn_digit(digit, even):
+            doubled = digit * 2 if even else digit
+            return doubled - 9 if doubled > 9 else doubled
+        
+        digits = [int(d) for d in card_number]
+        checksum = sum(luhn_digit(d, i % 2 == len(digits) % 2) for i, d in enumerate(digits))
+        return checksum % 10 == 0
+    
+    @staticmethod
+    def format_card_number(card_number: str) -> str:
+        """
+        Clean and format card number (remove spaces/dashes, keep digits only)
+        
+        Args:
+            card_number: Raw card number input
+            
+        Returns:
+            str: Cleaned card number with digits only
+        """
+        return re.sub(r'[\s\-]', '', card_number)
 
 def main():
     # Initialize bot
@@ -821,12 +921,38 @@ def main():
         if not bot.owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
         
+        # Validate card number
+        is_valid_card, card_error = CardValidator.validate_card_number(number)
+        if not is_valid_card:
+            return await interaction.response.send_message(f"❌ Invalid card number: {card_error}", ephemeral=True)
+        
+        # Validate CVV
+        is_valid_cvv, cvv_error = CardValidator.validate_cvv(cvv, number)
+        if not is_valid_cvv:
+            return await interaction.response.send_message(f"❌ Invalid CVV: {cvv_error}", ephemeral=True)
+        
+        # Clean the card number
+        cleaned_number = CardValidator.format_card_number(number)
+        cleaned_cvv = cvv.strip()
+        
+        # Check for duplicates
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
-        cur.execute("INSERT INTO cards (number, cvv) VALUES (?, ?)", (number, cvv))
+        cur.execute("SELECT COUNT(*) FROM cards WHERE number = ? AND cvv = ?", (cleaned_number, cleaned_cvv))
+        exists = cur.fetchone()[0] > 0
+        
+        if exists:
+            conn.close()
+            return await interaction.response.send_message(f"❌ Card ending in {cleaned_number[-4:]} already exists in pool.", ephemeral=True)
+        
+        # Add to database
+        cur.execute("INSERT INTO cards (number, cvv) VALUES (?, ?)", (cleaned_number, cleaned_cvv))
         conn.commit()
         conn.close()
-        await interaction.response.send_message(f"✅ Card ending in {number[-4:]} added.", ephemeral=True)
+        
+        await interaction.response.send_message(f"✅ Card ending in {cleaned_number[-4:]} added successfully.", ephemeral=True)
+
+
     
     @bot.tree.command(name='add_email', description='(Admin) Add an email to the pool')
     @app_commands.describe(top="Add this email to the top of the pool so it's used first")
@@ -917,21 +1043,29 @@ def main():
                     invalid_lines.append(f"Line {i}: '{line}' (expected format: cardnum,cvv)")
                     continue
                 
-                number, cvv = parts[0].strip(), parts[1].strip()
+                raw_number, raw_cvv = parts[0].strip(), parts[1].strip()
                 
-                if not number or not cvv:
+                if not raw_number or not raw_cvv:
                     invalid_lines.append(f"Line {i}: '{line}' (empty card number or CVV)")
                     continue
                 
-                if not number.isdigit() or len(number) < 13 or len(number) > 19:
-                    invalid_lines.append(f"Line {i}: '{line}' (invalid card number format)")
+                # Validate card number
+                is_valid_card, card_error = CardValidator.validate_card_number(raw_number)
+                if not is_valid_card:
+                    invalid_lines.append(f"Line {i}: '{line}' - {card_error}")
                     continue
                 
-                if not cvv.isdigit() or len(cvv) < 3 or len(cvv) > 4:
-                    invalid_lines.append(f"Line {i}: '{line}' (invalid CVV format)")
+                # Validate CVV
+                is_valid_cvv, cvv_error = CardValidator.validate_cvv(raw_cvv, raw_number)
+                if not is_valid_cvv:
+                    invalid_lines.append(f"Line {i}: '{line}' - {cvv_error}")
                     continue
                 
-                cards_to_add.append((number, cvv))
+                # Clean the inputs
+                cleaned_number = CardValidator.format_card_number(raw_number)
+                cleaned_cvv = raw_cvv.strip()
+                
+                cards_to_add.append((cleaned_number, cleaned_cvv))
             
             if invalid_lines:
                 error_msg = "❌ Found invalid lines:\n" + "\n".join(invalid_lines[:10])
@@ -971,7 +1105,8 @@ def main():
             await interaction.response.send_message("❌ Could not read file. Please ensure it's a valid UTF-8 text file.", ephemeral=True)
         except Exception as e:
             await interaction.response.send_message(f"❌ Error processing file: {str(e)}", ephemeral=True)
-    
+
+
     @bot.tree.command(name='bulk_emails', description='(Admin) Add multiple emails from a text file')
     async def bulk_emails(interaction: discord.Interaction, file: discord.Attachment):
         if not bot.owner_only(interaction):
