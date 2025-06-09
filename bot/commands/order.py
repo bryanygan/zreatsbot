@@ -363,9 +363,13 @@ def setup(bot: commands.Bot):
         info = parse_fields(embed)
         name = info.get('name', '').lower()
         addr = info.get('address', info.get('addr2', '')).lower()
-        data = helpers.ORDER_WEBHOOK_CACHE.get((name, addr))
+        key = (name, addr)
+        data = helpers.ORDER_WEBHOOK_CACHE.get(key)
         if not data:
-            return await interaction.response.send_message('❌ No matching webhook found.', ephemeral=True)
+            cache_keys = ", ".join([f"{n}|{a}" for n, a in helpers.ORDER_WEBHOOK_CACHE.keys()]) or "<empty>"
+            await interaction.response.send_message('❌ No matching webhook found.', ephemeral=True)
+            print(f"[DEBUG] send_tracking miss for {key}; cache keys: {cache_keys}")
+            return
 
         e = discord.Embed(title='Order Placed', url=data.get('tracking'), color=0x00ff00)
         e.add_field(name='Store', value=data.get('store'), inline=False)
@@ -377,4 +381,17 @@ def setup(bot: commands.Bot):
 
         await interaction.response.send_message(embed=e)
         helpers.ORDER_WEBHOOK_CACHE.pop((name, addr), None)
+        print(f"[DEBUG] send_tracking delivered for {key}")
+
+    @bot.tree.command(name='debug_webhooks', description='List cached webhook orders')
+    async def debug_webhooks(interaction: discord.Interaction):
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+
+        if not helpers.ORDER_WEBHOOK_CACHE:
+            return await interaction.response.send_message('Cache is empty.', ephemeral=True)
+
+        lines = [f"{n} | {a} -> {d.get('store')}" for (n, a), d in helpers.ORDER_WEBHOOK_CACHE.items()]
+        message = '\n'.join(lines)
+        await interaction.response.send_message(f'```\n{message}\n```', ephemeral=True)
 

@@ -193,6 +193,7 @@ def main():
             addr = data.get('address', '').lower()
             if name and addr:
                 helpers.ORDER_WEBHOOK_CACHE[(name, addr)] = data
+                print(f"[DEBUG] stored webhook for {(name, addr)}")
 
         await bot.process_commands(message)
 

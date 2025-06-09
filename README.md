@@ -12,6 +12,7 @@ A unified Discord bot that combines two essential functionalities:
 - **`/wool_order`** - Generate Wool order commands
 - **Automatic embed parsing** from ticket bots
 - **Order webhook tracking** - Use `/send_tracking` after a webhook posts to send tracking info to the ticket
+- **Webhook cache debugging** - `/debug_webhooks` lists cached orders and helps diagnose tracking issues
 - **Card & Email pools** with SQLite storage
 - **Comprehensive logging** to JSON, CSV, and TXT files
 - **Custom card/email support** - Use your own cards/emails without touching the pool
