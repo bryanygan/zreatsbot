@@ -134,8 +134,10 @@ class CombinedBot(commands.Bot):
     def get_pool_counts(self) -> Tuple[int, int]:
         return db_get_pool_counts()
 
-    async def fetch_order_embed(self, channel: discord.TextChannel):
-        return await helpers.fetch_order_embed(channel)
+    async def fetch_order_embed(
+        self, channel: discord.TextChannel, search_limit: int = 25
+    ):
+        return await helpers.fetch_order_embed(channel, search_limit=search_limit)
 
     def parse_fields(self, embed: discord.Embed) -> dict:
         return helpers.parse_fields(embed)
