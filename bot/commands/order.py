@@ -126,7 +126,186 @@ def setup(bot: commands.Bot):
         footer_parts = [f"Cards: {card_count}", f"Emails: {email_count}"]
         footer_parts.extend(warnings)
         embed.set_footer(text=" | ".join(footer_parts))
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    @bot.tree.command(name='debug_embed_details', description='Show detailed embed structure for debugging')
+    async def debug_embed_details(interaction: discord.Interaction, message_id: str = None, search_limit: int = 5):
+        """Show raw embed structure to debug webhook detection issues"""
+        
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+        
+        embeds_analyzed = []
+        
+        try:
+            if message_id:
+                # Analyze specific message
+                try:
+                    message = await interaction.channel.fetch_message(int(message_id))
+                    messages_to_check = [message]
+                except:
+                    return await interaction.response.send_message('❌ Could not find message with that ID.', ephemeral=True)
+            else:
+                # Analyze recent messages
+                messages_to_check = []
+                async for msg in interaction.channel.history(limit=search_limit):
+                    messages_to_check.append(msg)
+            
+            for message in messages_to_check:
+                if message.embeds:
+                    for i, embed in enumerate(message.embeds):
+                        analysis = {
+                            'message_id': message.id,
+                            'embed_index': i,
+                            'is_webhook': bool(message.webhook_id),
+                            'webhook_id': message.webhook_id,
+                            'author': str(message.author),
+                            'title': embed.title,
+                            'description': (embed.description or '')[:200] + ('...' if embed.description and len(embed.description) > 200 else ''),
+                            'field_count': len(embed.fields),
+                            'field_names': [f.name for f in embed.fields],
+                            'field_values_preview': {f.name: (f.value or '')[:100] + ('...' if f.value and len(f.value) > 100 else '') for f in embed.fields[:5]},
+                            'color': embed.color,
+                            'url': embed.url
+                        }
+                        
+                        # Test detection logic
+                        field_names = set(f.name for f in embed.fields)
+                        analysis['is_tracking'] = {"Store", "Name", "Delivery Address"}.issubset(field_names)
+                        analysis['is_checkout'] = (
+                            "Account Email" in field_names or 
+                            "Delivery Information" in field_names or
+                            "Items In Bag" in field_names or
+                            (embed.title and "Checkout Successful" in embed.title) or
+                            (embed.description and "Checkout Successful" in embed.description) or
+                            ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"]))
+                        )
+                        
+                        # Test parsing if it's detected as a webhook
+                        if analysis['is_tracking'] or analysis['is_checkout']:
+                            try:
+                                parsed_data = helpers.parse_webhook_fields(embed)
+                                analysis['parsed_data'] = parsed_data
+                            except Exception as e:
+                                analysis['parsing_error'] = str(e)
+                        
+                        embeds_analyzed.append(analysis)
+        
+        except Exception as e:
+            return await interaction.response.send_message(f'❌ Error analyzing embeds: {str(e)}', ephemeral=True)
+        
+        if not embeds_analyzed:
+            return await interaction.response.send_message('📭 No embeds found in the specified messages.', ephemeral=True)
+        
+        # Create detailed response
+        for analysis in embeds_analyzed[:2]:  # Show detailed info for first 2 embeds
+            embed = discord.Embed(title=f'Embed Debug: Message {analysis["message_id"]}', color=0xFF00FF)
+            embed.add_field(name='Basic Info', 
+                           value=f'**Is Webhook**: {analysis["is_webhook"]}\n**Author**: {analysis["author"]}\n**Title**: {analysis["title"] or "None"}\n**Fields**: {analysis["field_count"]}', 
+                           inline=False)
+            
+            embed.add_field(name='Detection Results',
+                           value=f'**Is Tracking**: {analysis["is_tracking"]}\n**Is Checkout**: {analysis["is_checkout"]}',
+                           inline=False)
+            
+            embed.add_field(name='Field Names',
+                           value=', '.join(analysis["field_names"]) if analysis["field_names"] else 'None',
+                           inline=False)
+            
+            if analysis["field_values_preview"]:
+                field_preview = '\n'.join([f'**{name}**: {value}' for name, value in list(analysis["field_values_preview"].items())[:3]])
+                embed.add_field(name='Field Values (first 3)', value=field_preview, inline=False)
+            
+            if 'parsed_data' in analysis:
+                parsed = analysis['parsed_data']
+                embed.add_field(name='Parsed Data',
+                               value=f'**Name**: {parsed.get("name", "None")}\n**Store**: {parsed.get("store", "None")}\n**Type**: {parsed.get("type", "None")}',
+                               inline=False)
+            elif 'parsing_error' in analysis:
+                embed.add_field(name='Parsing Error', value=analysis['parsing_error'], inline=False)
+            
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        
+        # Summary response
+        summary = f'📊 **Embed Analysis Summary**\n\n'
+        summary += f'**Total Embeds Analyzed**: {len(embeds_analyzed)}\n'
+        summary += f'**Webhook Messages**: {sum(1 for a in embeds_analyzed if a["is_webhook"])}\n'
+        summary += f'**Detected as Tracking**: {sum(1 for a in embeds_analyzed if a["is_tracking"])}\n'
+        summary += f'**Detected as Checkout**: {sum(1 for a in embeds_analyzed if a["is_checkout"])}\n'
+        
+        if len(embeds_analyzed) > 2:
+            summary += f'\n*Showing detailed analysis for first 2 embeds only*'
+        
+        await interaction.response.send_message(summary, ephemeral=True)
+
+    @bot.tree.command(name='check_specific_message', description='Check if a specific message would be detected as webhook')
+    async def check_specific_message(interaction: discord.Interaction, message_id: str):
+        """Check detection logic on a specific message ID"""
+        
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+        
+        try:
+            message = await interaction.channel.fetch_message(int(message_id))
+        except:
+            return await interaction.response.send_message('❌ Could not find message with that ID.', ephemeral=True)
+        
+        results = []
+        
+        if not message.embeds:
+            return await interaction.response.send_message('❌ Message has no embeds.', ephemeral=True)
+        
+        for i, embed in enumerate(message.embeds):
+            field_names = set(f.name for f in embed.fields)
+            
+            # Manual step-by-step detection
+            has_webhook_id = bool(message.webhook_id)
+            has_store_name_delivery = {"Store", "Name", "Delivery Address"}.issubset(field_names)
+            has_account_email = "Account Email" in field_names
+            has_delivery_info = "Delivery Information" in field_names
+            has_items_in_bag = "Items In Bag" in field_names
+            has_checkout_title = embed.title and "Checkout Successful" in embed.title
+            has_checkout_desc = embed.description and "Checkout Successful" in embed.description
+            has_store_and_account = "Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])
+            
+            is_tracking = has_store_name_delivery
+            is_checkout = (has_account_email or has_delivery_info or has_items_in_bag or 
+                          has_checkout_title or has_checkout_desc or has_store_and_account)
+            
+            results.append({
+                'embed_index': i,
+                'field_names': list(field_names),
+                'has_webhook_id': has_webhook_id,
+                'detection_checks': {
+                    'Store + Name + Delivery Address': has_store_name_delivery,
+                    'Account Email': has_account_email,
+                    'Delivery Information': has_delivery_info,
+                    'Items In Bag': has_items_in_bag,
+                    'Checkout in Title': has_checkout_title,
+                    'Checkout in Description': has_checkout_desc,
+                    'Store + Account Fields': has_store_and_account
+                },
+                'final_detection': {
+                    'is_tracking': is_tracking,
+                    'is_checkout': is_checkout,
+                    'would_process': has_webhook_id and (is_tracking or is_checkout)
+                }
+            })
+        
+        embed_response = discord.Embed(title=f'Message Detection Analysis: {message_id}', color=0x00FFFF)
+        embed_response.add_field(name='Message Info', 
+                                value=f'**Has Webhook ID**: {bool(message.webhook_id)}\n**Author**: {message.author}\n**Embeds**: {len(message.embeds)}',
+                                inline=False)
+        
+        for result in results:
+            checks = '\n'.join([f'• {check}: {"✅" if passed else "❌"}' for check, passed in result['detection_checks'].items()])
+            final = result['final_detection']
+            
+            embed_response.add_field(
+                name=f'Embed {result["embed_index"]} Analysis',
+                value=f'**Field Names**: {", ".join(result["field_names"][:5])}...\n\n**Detection Checks**:\n{checks}\n\n**Final Results**:\n• Tracking: {"✅" if final["is_tracking"] else "❌"}\n• Checkout: {"✅" if final["is_checkout"] else "❌"}\n• **Would Process**: {"✅" if final["would_process"] else "❌"}',
+                inline=False
+            )
+        
+        await interaction.response.send_message(embed=embed_response, ephemeral=True)
 
     @bot.tree.command(name='wool_details', description='Show parsed Wool order details')
     async def wool_details(interaction: discord.Interaction):
