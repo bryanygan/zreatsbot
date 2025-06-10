@@ -582,7 +582,149 @@ def setup(bot: commands.Bot):
         footer_parts = [f"Cards: {card_count}", f"Emails: {email_count}"]
         footer_parts.extend(warnings)
         embed.set_footer(text=" | ".join(footer_parts))
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    @bot.tree.command(name='debug_stewardess_webhook', description='Debug the stewardess webhook specifically')
+    async def debug_stewardess_webhook(interaction: discord.Interaction):
+        """Debug the specific stewardess webhook that's not being detected"""
+        
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+        
+        target_message_id = 1381820637600808960  # The stewardess webhook
+        found_message = None
+        
+        try:
+            # Look for the message in recent history
+            async for message in interaction.channel.history(limit=50):
+                if message.id == target_message_id:
+                    found_message = message
+                    break
+            
+            if not found_message:
+                return await interaction.response.send_message('❌ Could not find the stewardess webhook message.', ephemeral=True)
+            
+            if not found_message.embeds:
+                return await interaction.response.send_message('❌ Message has no embeds.', ephemeral=True)
+            
+            embed = found_message.embeds[0]  # First embed
+            
+            # Get all the raw data
+            field_names = [f.name for f in embed.fields]
+            field_names_set = set(field_names)
+            
+            # Manual detection step by step
+            detection_results = {
+                'has_webhook_id': bool(found_message.webhook_id),
+                'webhook_id': found_message.webhook_id,
+                'author': str(found_message.author),
+                'title': embed.title,
+                'description': embed.description,
+                'description_preview': (embed.description or '')[:500] + ('...' if embed.description and len(embed.description) > 500 else ''),
+                'field_count': len(embed.fields),
+                'field_names': field_names,
+                
+                # Tracking detection
+                'has_store': 'Store' in field_names_set,
+                'has_name': 'Name' in field_names_set,
+                'has_delivery_address': 'Delivery Address' in field_names_set,
+                'is_tracking': {'Store', 'Name', 'Delivery Address'}.issubset(field_names_set),
+                
+                # Checkout detection - each condition separately
+                'has_account_email_field': 'Account Email' in field_names_set,
+                'has_delivery_info_field': 'Delivery Information' in field_names_set,
+                'has_items_in_bag_field': 'Items In Bag' in field_names_set,
+                'checkout_in_title': embed.title and 'Checkout Successful' in embed.title,
+                'checkout_in_desc': embed.description and 'Checkout Successful' in embed.description,
+                'has_store_field': 'Store' in field_names_set,
+                'has_account_phone_field': 'Account Phone' in field_names_set,
+                'store_plus_account': 'Store' in field_names_set and any(x in field_names_set for x in ['Account Email', 'Account Phone', 'Delivery Information', 'Items In Bag']),
+                
+                # New description-based detection
+                'zero_fields': len(embed.fields) == 0,
+                'has_description': bool(embed.description),
+                'store_in_desc': embed.description and 'Store:' in embed.description,
+                'account_email_in_desc': embed.description and 'Account Email:' in embed.description,
+                'delivery_info_in_desc': embed.description and 'Delivery Information:' in embed.description,
+                'items_in_bag_in_desc': embed.description and 'Items In Bag:' in embed.description,
+                'desc_based_checkout': (len(embed.fields) == 0 and embed.description and 
+                                       any(x in embed.description for x in ['Store:', 'Account Email:', 'Delivery Information:', 'Items In Bag:']))
+            }
+            
+            # Calculate final checkout detection
+            detection_results['is_checkout'] = (
+                detection_results['has_account_email_field'] or
+                detection_results['has_delivery_info_field'] or 
+                detection_results['has_items_in_bag_field'] or
+                detection_results['checkout_in_title'] or
+                detection_results['checkout_in_desc'] or
+                detection_results['store_plus_account'] or
+                detection_results['desc_based_checkout']
+            )
+            
+            # Test parsing if detected as checkout
+            parsed_data = None
+            parsing_error = None
+            if detection_results['is_checkout']:
+                try:
+                    parsed_data = helpers.parse_webhook_fields(embed)
+                except Exception as e:
+                    parsing_error = str(e)
+            
+            # Create debug response
+            debug_embed = discord.Embed(title='Stewardess Webhook Debug', color=0xFF0000)
+            
+            # Basic info
+            debug_embed.add_field(
+                name='Basic Info',
+                value=f'**Webhook ID**: {detection_results["webhook_id"]}\n**Author**: {detection_results["author"]}\n**Title**: {detection_results["title"] or "None"}\n**Field Count**: {detection_results["field_count"]}\n**Has Description**: {detection_results["has_description"]}',
+                inline=False
+            )
+            
+            # Description preview
+            if detection_results['description_preview']:
+                debug_embed.add_field(
+                    name='Description Preview',
+                    value=f'```{detection_results["description_preview"]}```',
+                    inline=False
+                )
+            
+            # All field names
+            debug_embed.add_field(
+                name='All Field Names',
+                value=', '.join(f'"{name}"' for name in detection_results['field_names']) if detection_results['field_names'] else 'None',
+                inline=False
+            )
+            
+            # Detection results
+            tracking_checks = f'• Store field: {"✅" if detection_results["has_store"] else "❌"}\n• Name field: {"✅" if detection_results["has_name"] else "❌"}\n• Delivery Address field: {"✅" if detection_results["has_delivery_address"] else "❌"}'
+            
+            field_checkout_checks = f'• Account Email field: {"✅" if detection_results["has_account_email_field"] else "❌"}\n• Delivery Info field: {"✅" if detection_results["has_delivery_info_field"] else "❌"}\n• Items In Bag field: {"✅" if detection_results["has_items_in_bag_field"] else "❌"}\n• Store + Account: {"✅" if detection_results["store_plus_account"] else "❌"}'
+            
+            desc_checkout_checks = f'• Zero fields: {"✅" if detection_results["zero_fields"] else "❌"}\n• Store: in desc: {"✅" if detection_results["store_in_desc"] else "❌"}\n• Account Email: in desc: {"✅" if detection_results["account_email_in_desc"] else "❌"}\n• Delivery Info: in desc: {"✅" if detection_results["delivery_info_in_desc"] else "❌"}\n• Items In Bag: in desc: {"✅" if detection_results["items_in_bag_in_desc"] else "❌"}\n• **Desc-based checkout**: {"✅" if detection_results["desc_based_checkout"] else "❌"}'
+            
+            debug_embed.add_field(name='Tracking Checks', value=tracking_checks, inline=True)
+            debug_embed.add_field(name='Field-based Checkout', value=field_checkout_checks, inline=True)
+            debug_embed.add_field(name='Description-based Checkout', value=desc_checkout_checks, inline=False)
+            
+            debug_embed.add_field(name='Final Results', 
+                                 value=f'**Is Tracking**: {"✅" if detection_results["is_tracking"] else "❌"}\n**Is Checkout**: {"✅" if detection_results["is_checkout"] else "❌"}',
+                                 inline=False)
+            
+            # Show parsing results
+            if parsed_data:
+                debug_embed.add_field(
+                    name='Parsed Data',
+                    value=f'**Name**: "{parsed_data.get("name", "None")}"\n**Store**: "{parsed_data.get("store", "None")}"\n**Type**: "{parsed_data.get("type", "None")}"\n**Address**: "{parsed_data.get("address", "None")}"\n**Email**: "{parsed_data.get("payment", "None")}"',
+                    inline=False
+                )
+            elif parsing_error:
+                debug_embed.add_field(name='Parsing Error', value=parsing_error, inline=False)
+            elif detection_results['is_checkout']:
+                debug_embed.add_field(name='Parsing', value='Detected as checkout but no parsing attempted', inline=False)
+            
+            await interaction.response.send_message(embed=debug_embed, ephemeral=True)
+            
+        except Exception as e:
+            await interaction.response.send_message(f'❌ Error debugging message: {str(e)}', ephemeral=True)
 
     @bot.tree.command(name='wool_order', description='Format a Wool order')
     @app_commands.describe(
