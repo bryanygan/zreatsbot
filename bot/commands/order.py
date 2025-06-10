@@ -458,116 +458,6 @@ def setup(bot: commands.Bot):
         # Send initial response
         await interaction.response.send_message(f'📊 Found {len(found_embeds)} embeds. Showing detailed field info for first 3.', ephemeral=True)
 
-    @bot.tree.command(name='debug_stewardess_webhook', description='Debug the stewardess webhook specifically')
-    async def debug_stewardess_webhook(interaction: discord.Interaction):
-        """Debug the specific stewardess webhook that's not being detected"""
-        
-        if not owner_only(interaction):
-            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
-        
-        target_message_id = 1381820637600808960  # The stewardess webhook
-        found_message = None
-        
-        try:
-            # Look for the message in recent history
-            async for message in interaction.channel.history(limit=50):
-                if message.id == target_message_id:
-                    found_message = message
-                    break
-            
-            if not found_message:
-                return await interaction.response.send_message('❌ Could not find the stewardess webhook message.', ephemeral=True)
-            
-            if not found_message.embeds:
-                return await interaction.response.send_message('❌ Message has no embeds.', ephemeral=True)
-            
-            embed = found_message.embeds[0]  # First embed
-            
-            # Get all the raw data
-            field_names = [f.name for f in embed.fields]
-            field_names_set = set(field_names)
-            
-            # Manual detection step by step
-            detection_results = {
-                'has_webhook_id': bool(found_message.webhook_id),
-                'webhook_id': found_message.webhook_id,
-                'author': str(found_message.author),
-                'title': embed.title,
-                'description': embed.description,
-                'field_count': len(embed.fields),
-                'field_names': field_names,
-                
-                # Tracking detection
-                'has_store': 'Store' in field_names_set,
-                'has_name': 'Name' in field_names_set,
-                'has_delivery_address': 'Delivery Address' in field_names_set,
-                'is_tracking': {'Store', 'Name', 'Delivery Address'}.issubset(field_names_set),
-                
-                # Checkout detection - each condition separately
-                'has_account_email': 'Account Email' in field_names_set,
-                'has_delivery_info': 'Delivery Information' in field_names_set,
-                'has_items_in_bag': 'Items In Bag' in field_names_set,
-                'checkout_in_title': embed.title and 'Checkout Successful' in embed.title,
-                'checkout_in_desc': embed.description and 'Checkout Successful' in embed.description,
-                'has_store_field': 'Store' in field_names_set,
-                'has_account_phone': 'Account Phone' in field_names_set,
-                'store_plus_account': 'Store' in field_names_set and any(x in field_names_set for x in ['Account Email', 'Account Phone', 'Delivery Information', 'Items In Bag'])
-            }
-            
-            # Calculate final checkout detection
-            detection_results['is_checkout'] = (
-                detection_results['has_account_email'] or
-                detection_results['has_delivery_info'] or 
-                detection_results['has_items_in_bag'] or
-                detection_results['checkout_in_title'] or
-                detection_results['checkout_in_desc'] or
-                detection_results['store_plus_account']
-            )
-            
-            # Show field values for key fields
-            field_values = {}
-            for field in embed.fields:
-                if field.name in ['Store', 'Account Email', 'Delivery Information', 'Items In Bag', 'Account Phone']:
-                    field_values[field.name] = field.value[:200] + ('...' if len(field.value) > 200 else '')
-            
-            # Create debug response
-            debug_embed = discord.Embed(title='Stewardess Webhook Debug', color=0xFF0000)
-            
-            # Basic info
-            debug_embed.add_field(
-                name='Basic Info',
-                value=f'**Webhook ID**: {detection_results["webhook_id"]}\n**Author**: {detection_results["author"]}\n**Title**: {detection_results["title"] or "None"}\n**Description**: {(detection_results["description"] or "None")[:100]}...\n**Field Count**: {detection_results["field_count"]}',
-                inline=False
-            )
-            
-            # All field names
-            debug_embed.add_field(
-                name='All Field Names',
-                value=', '.join(f'"{name}"' for name in detection_results['field_names']) if detection_results['field_names'] else 'None',
-                inline=False
-            )
-            
-            # Detection results
-            tracking_checks = f'• Store: {"✅" if detection_results["has_store"] else "❌"}\n• Name: {"✅" if detection_results["has_name"] else "❌"}\n• Delivery Address: {"✅" if detection_results["has_delivery_address"] else "❌"}'
-            
-            checkout_checks = f'• Account Email: {"✅" if detection_results["has_account_email"] else "❌"}\n• Delivery Information: {"✅" if detection_results["has_delivery_info"] else "❌"}\n• Items In Bag: {"✅" if detection_results["has_items_in_bag"] else "❌"}\n• Checkout in Title: {"✅" if detection_results["checkout_in_title"] else "❌"}\n• Checkout in Desc: {"✅" if detection_results["checkout_in_desc"] else "❌"}\n• Store + Account: {"✅" if detection_results["store_plus_account"] else "❌"}'
-            
-            debug_embed.add_field(name='Tracking Checks', value=tracking_checks, inline=True)
-            debug_embed.add_field(name='Checkout Checks', value=checkout_checks, inline=True)
-            debug_embed.add_field(name='Final Results', 
-                                 value=f'**Is Tracking**: {"✅" if detection_results["is_tracking"] else "❌"}\n**Is Checkout**: {"✅" if detection_results["is_checkout"] else "❌"}',
-                                 inline=False)
-            
-            # Show key field values
-            if field_values:
-                values_text = '\n'.join([f'**{name}**: {value}' for name, value in field_values.items()])
-                debug_embed.add_field(name='Key Field Values', value=values_text, inline=False)
-            
-            await interaction.response.send_message(embed=debug_embed, ephemeral=True)
-            
-        except Exception as e:
-            await interaction.response.send_message(f'❌ Error debugging message: {str(e)}', ephemeral=True)
-
     @bot.tree.command(name='wool_details', description='Show parsed Wool order details')
     async def wool_details(interaction: discord.Interaction):
         if not owner_only(interaction):
@@ -992,14 +882,17 @@ def setup(bot: commands.Bot):
                         # Check for tracking webhook (Store, Name, Delivery Address)
                         is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
                         
-                        # Check for checkout webhook (Account Email, Delivery Information, etc.)
+                        # Check for checkout webhook - also check description for embedded content
                         is_checkout = (
                             "Account Email" in field_names or 
                             "Delivery Information" in field_names or
                             "Items In Bag" in field_names or
                             (embed.title and "Checkout Successful" in embed.title) or
                             (embed.description and "Checkout Successful" in embed.description) or
-                            ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"]))
+                            ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
+                            # New check for description-based checkout webhooks
+                            (len(embed.fields) == 0 and embed.description and 
+                             any(x in embed.description for x in ['Store:', 'Account Email:', 'Delivery Information:', 'Items In Bag:']))
                         )
                         
                         if is_tracking or is_checkout:

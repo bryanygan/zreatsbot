@@ -136,7 +136,67 @@ def parse_webhook_fields(embed: discord.Embed) -> dict:
             'type': 'tracking'
         }
     
-    # Handle checkout webhook format (rich text with **bold** and ╰・ formatting)
+    # Handle checkout webhook format - check if it's in description instead of fields
+    elif (len(embed.fields) == 0 and embed.description and 
+          ('Store:' in embed.description or 'Account Email:' in embed.description or 
+           'Delivery Information:' in embed.description or 'Items In Bag:' in embed.description)):
+        
+        description = embed.description
+        import re
+        
+        # Extract store from description
+        store_match = re.search(r'\*\*Store\*\*:\s*([^\n]+)', description)
+        store = store_match.group(1).strip() if store_match else 'Unknown Store'
+        
+        # Extract name from Delivery Information section
+        name = ''
+        name_match = re.search(r'╰・\*\*Name\*\*:\s*([^\n╰]+)', description)
+        if name_match:
+            name = name_match.group(1).strip()
+        
+        # Extract address from Delivery Information section
+        address = ''
+        addr_match = re.search(r'╰・\*\*Address L1\*\*:\s*([^\n╰]+)', description)
+        if addr_match:
+            address = addr_match.group(1).strip()
+        
+        # Extract arrival time
+        eta = ''
+        arrival_match = re.search(r'\*\*Arrival\*\*:\s*([^\n]+)', description)
+        if arrival_match:
+            eta = arrival_match.group(1).strip()
+        
+        # Extract items
+        items = ''
+        items_match = re.search(r'\*\*Items In Bag\*\*:\s*(.*?)(?=\n\*\*|$)', description, re.DOTALL)
+        if items_match:
+            items = items_match.group(1).strip()
+        
+        # Extract account email
+        email = ''
+        email_match = re.search(r'\*\*Account Email\*\*:\s*(?:```)?([^\n`]+)', description)
+        if email_match:
+            email = email_match.group(1).strip()
+        
+        # Extract phone
+        phone = ''
+        phone_match = re.search(r'\*\*Account Phone\*\*:\s*`?([^`\n]+)', description)
+        if phone_match:
+            phone = phone_match.group(1).strip()
+        
+        return {
+            'store': store,
+            'eta': eta,
+            'name': name,
+            'address': address,
+            'items': items,
+            'tracking': tracking_url.strip() if tracking_url else '',
+            'phone': phone,
+            'payment': email,
+            'type': 'checkout'
+        }
+    
+    # Handle checkout webhook format (rich text with **bold** and ╰・ formatting in fields)
     elif ('Account Email' in data or 'Delivery Information' in data or 'Items In Bag' in data or
           ('Store' in data and any(x in data for x in ['Account Email', 'Account Phone', 'Delivery Information', 'Items In Bag']))):
         

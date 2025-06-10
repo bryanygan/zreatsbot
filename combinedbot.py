@@ -198,14 +198,17 @@ def main():
                 # Check for tracking webhook (Store, Name, Delivery Address)
                 is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
                 
-                # Check for checkout webhook (Account Email, Delivery Information, etc.)
+                # Check for checkout webhook - also check description for embedded content
                 is_checkout = (
                     "Account Email" in field_names or 
                     "Delivery Information" in field_names or
                     "Items In Bag" in field_names or
                     (embed.title and "Checkout Successful" in embed.title) or
                     (embed.description and "Checkout Successful" in embed.description) or
-                    ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"]))
+                    ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
+                    # New check for description-based checkout webhooks
+                    (len(embed.fields) == 0 and embed.description and 
+                     any(x in embed.description for x in ['Store:', 'Account Email:', 'Delivery Information:', 'Items In Bag:']))
                 )
                 
                 if is_tracking or is_checkout:
