@@ -546,14 +546,31 @@ def setup(bot: commands.Bot):
         
         found_webhooks = 0
         cached_webhooks = 0
+        tracking_webhooks = 0
+        checkout_webhooks = 0
         
         try:
             async for message in target_channel.history(limit=search_limit):
                 if message.webhook_id and message.embeds:
                     for embed in message.embeds:
                         field_names = {f.name for f in embed.fields}
-                        if {"Store", "Name", "Delivery Address"}.issubset(field_names):
+                        
+                        # Check for tracking webhook (Store, Name, Delivery Address)
+                        is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
+                        
+                        # Check for checkout webhook (Account Email, Delivery Information, etc.)
+                        is_checkout = ("Account Email" in field_names or 
+                                     "Delivery Information" in field_names or
+                                     (embed.title and "Checkout Successful" in embed.title))
+                        
+                        if is_tracking or is_checkout:
                             found_webhooks += 1
+                            
+                            if is_tracking:
+                                tracking_webhooks += 1
+                            elif is_checkout:
+                                checkout_webhooks += 1
+                            
                             data = helpers.parse_webhook_fields(embed)
                             name = helpers.normalize_name_for_matching(data.get('name', ''))
                             addr = data.get('address', '').lower().strip()
@@ -569,7 +586,9 @@ def setup(bot: commands.Bot):
         embed = discord.Embed(title='Webhook Scan Results', color=0x00FF00)
         embed.add_field(name='Channel Scanned', value=target_channel.mention, inline=False)
         embed.add_field(name='Messages Searched', value=str(search_limit), inline=False)
-        embed.add_field(name='Webhook Orders Found', value=str(found_webhooks), inline=False)
+        embed.add_field(name='Total Webhook Orders Found', value=str(found_webhooks), inline=False)
+        embed.add_field(name='├─ Tracking Webhooks', value=str(tracking_webhooks), inline=True)
+        embed.add_field(name='└─ Checkout Webhooks', value=str(checkout_webhooks), inline=True)
         embed.add_field(name='New Entries Cached', value=str(cached_webhooks), inline=False)
         embed.add_field(name='Total Cache Size', value=str(len(helpers.ORDER_WEBHOOK_CACHE)), inline=False)
         
@@ -577,7 +596,8 @@ def setup(bot: commands.Bot):
             recent_names = []
             for (name, addr), data in list(helpers.ORDER_WEBHOOK_CACHE.items())[-5:]:
                 store = data.get('store', 'Unknown')
-                recent_names.append(f"{name} ({store})")
+                webhook_type = data.get('type', 'unknown')
+                recent_names.append(f"{name} ({store}) [{webhook_type}]")
             embed.add_field(name='Recent Cached Names', value='\n'.join(recent_names), inline=False)
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -595,10 +615,27 @@ def setup(bot: commands.Bot):
         embed = discord.Embed(title='Webhook Cache Contents', color=0x0099FF)
         embed.add_field(name='Total Entries', value=str(len(helpers.ORDER_WEBHOOK_CACHE)), inline=False)
         
+        # Count by type
+        tracking_count = sum(1 for data in helpers.ORDER_WEBHOOK_CACHE.values() if data.get('type') == 'tracking')
+        checkout_count = sum(1 for data in helpers.ORDER_WEBHOOK_CACHE.values() if data.get('type') == 'checkout')
+        unknown_count = len(helpers.ORDER_WEBHOOK_CACHE) - tracking_count - checkout_count
+        
+        type_summary = []
+        if tracking_count > 0:
+            type_summary.append(f"Tracking: {tracking_count}")
+        if checkout_count > 0:
+            type_summary.append(f"Checkout: {checkout_count}")
+        if unknown_count > 0:
+            type_summary.append(f"Unknown: {unknown_count}")
+        
+        if type_summary:
+            embed.add_field(name='By Type', value=' | '.join(type_summary), inline=False)
+        
         cache_entries = []
         for (name, addr), data in helpers.ORDER_WEBHOOK_CACHE.items():
             store = data.get('store', 'Unknown')
-            cache_entries.append(f"**{name}** → {store}")
+            webhook_type = data.get('type', 'unknown')
+            cache_entries.append(f"**{name}** → {store} `[{webhook_type}]`")
         
         # Show up to 10 entries
         if len(cache_entries) <= 10:
