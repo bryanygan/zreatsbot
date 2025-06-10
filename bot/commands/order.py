@@ -862,7 +862,7 @@ def setup(bot: commands.Bot):
         webhook_type = data.get('type', 'unknown')
         
         if webhook_type == 'tracking':
-            e = discord.Embed(title='Order Placed', url=data.get('tracking'), color=0x00ff00)
+            e = discord.Embed(title='Order Placed!', url=data.get('tracking'), color=0x00ff00)
             e.add_field(name='Store', value=data.get('store'), inline=False)
             e.add_field(name='Estimated Arrival', value=data.get('eta'), inline=False)
             e.add_field(name='Order Items', value=data.get('items'), inline=False)
@@ -870,7 +870,7 @@ def setup(bot: commands.Bot):
             e.add_field(name='Delivery Address', value=data.get('address'), inline=False)
             e.set_footer(text='Watch the tracking link for updates!')
         else:  # checkout or unknown
-            e = discord.Embed(title='Checkout Successful', url=data.get('tracking'), color=0x0099ff)
+            e = discord.Embed(title='Checkout Successful!', url=data.get('tracking'), color=0x00ff00)
             e.add_field(name='Store', value=data.get('store'), inline=False)
             if data.get('eta') and data.get('eta') != 'N/A':
                 e.add_field(name='Estimated Arrival', value=data.get('eta'), inline=False)
@@ -879,7 +879,7 @@ def setup(bot: commands.Bot):
             e.add_field(name='Name', value=data.get('name'), inline=False)
             if data.get('address'):
                 e.add_field(name='Delivery Address', value=data.get('address'), inline=False)
-            e.set_footer(text=f'Checkout confirmed • Type: {webhook_type}')
+            e.set_footer(text='Watch the tracking link for updates!')
 
         await interaction.response.send_message(embed=e)
         
