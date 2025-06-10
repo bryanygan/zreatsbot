@@ -189,12 +189,20 @@ def main():
                 await message.add_reaction("❌")
                 await message.channel.send(f"{message.author.mention} ❌ {error}", delete_after=10)
 
+        # Improved webhook order processing
         if message.webhook_id and message.embeds:
-            data = helpers.parse_webhook_order(message.embeds[0])
-            name = data.get('name', '').lower()
-            addr = data.get('address', '').lower()
-            if name and addr:
-                helpers.ORDER_WEBHOOK_CACHE[(name, addr)] = data
+            for embed in message.embeds:
+                # Check if this looks like an order confirmation embed
+                field_names = {f.name for f in embed.fields}
+                if {"Store", "Name", "Delivery Address"}.issubset(field_names):
+                    data = helpers.parse_webhook_fields(embed)
+                    name = helpers.normalize_name_for_matching(data.get('name', ''))
+                    addr = data.get('address', '').lower().strip()
+                    
+                    if name:  # Only cache if we have a valid name
+                        # Store with normalized name for better matching
+                        helpers.ORDER_WEBHOOK_CACHE[(name, addr)] = data
+                        print(f"📦 Cached webhook order: {name} | {addr} at {data.get('store', 'Unknown Store')}")
 
         await bot.process_commands(message)
 

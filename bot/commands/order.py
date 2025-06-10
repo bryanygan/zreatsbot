@@ -8,11 +8,16 @@ from ..views import PaymentView
 from ..utils import helpers
 from ..utils.helpers import (
     fetch_order_embed,
+    fetch_ticket_embed,
+    fetch_webhook_embed,
     parse_fields,
+    parse_webhook_fields,
     normalize_name,
+    normalize_name_for_matching,
     format_name_csv,
     is_valid_field,
     owner_only,
+    find_matching_webhook_data,
 )
 from ..utils.card_validator import CardValidator
 from ..utils.channel_status import rename_history  # not used maybe? but not required
@@ -45,7 +50,7 @@ def setup(bot: commands.Bot):
         if card_cvv and not card_number:
             return await interaction.response.send_message("❌ Card number required when using custom CVV.", ephemeral=True)
 
-        embed = await fetch_order_embed(interaction.channel)
+        embed = await fetch_ticket_embed(interaction.channel)
         if embed is None:
             return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
@@ -128,7 +133,7 @@ def setup(bot: commands.Bot):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ You are not authorized.", ephemeral=True)
 
-        embed = await fetch_order_embed(interaction.channel)
+        embed = await fetch_ticket_embed(interaction.channel)
         if embed is None:
             return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
@@ -164,7 +169,7 @@ def setup(bot: commands.Bot):
         if card_cvv and not card_number:
             return await interaction.response.send_message("❌ Card number required when using custom CVV.", ephemeral=True)
 
-        embed = await fetch_order_embed(interaction.channel)
+        embed = await fetch_ticket_embed(interaction.channel)
         if embed is None:
             return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
@@ -265,7 +270,7 @@ def setup(bot: commands.Bot):
         if card_cvv and not card_number:
             return await interaction.response.send_message("❌ Card number required when using custom CVV.", ephemeral=True)
 
-        embed = await fetch_order_embed(interaction.channel)
+        embed = await fetch_ticket_embed(interaction.channel)
         if embed is None:
             return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
@@ -356,17 +361,39 @@ def setup(bot: commands.Bot):
         if not owner_only(interaction):
             return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
 
-        embed = await fetch_order_embed(interaction.channel)
-        if embed is None:
-            return await interaction.response.send_message('❌ Could not find order embed.', ephemeral=True)
-
-        info = parse_fields(embed)
-        name = info.get('name', '').lower()
-        addr = info.get('address', info.get('addr2', '')).lower()
-        data = helpers.ORDER_WEBHOOK_CACHE.get((name, addr))
+        # First try to find a ticket embed for name/address info
+        ticket_embed = await fetch_ticket_embed(interaction.channel)
+        webhook_embed = await fetch_webhook_embed(interaction.channel)
+        
+        name = None
+        addr = None
+        
+        # Get name and address from ticket embed if available
+        if ticket_embed:
+            info = parse_fields(ticket_embed)
+            name = normalize_name_for_matching(info.get('name', ''))
+            addr = info.get('address', info.get('addr2', '')).lower().strip()
+        # Fallback to webhook embed if no ticket embed
+        elif webhook_embed:
+            webhook_info = parse_webhook_fields(webhook_embed)
+            name = normalize_name_for_matching(webhook_info.get('name', ''))
+            addr = webhook_info.get('address', '').lower().strip()
+        else:
+            return await interaction.response.send_message('❌ Could not find order information.', ephemeral=True)
+        
+        if not name:
+            return await interaction.response.send_message('❌ Could not extract name from order.', ephemeral=True)
+        
+        # Try to find matching webhook data using improved matching
+        data = find_matching_webhook_data(name, addr)
+        
         if not data:
-            return await interaction.response.send_message('❌ No matching webhook found.', ephemeral=True)
+            # Show debug info about what was found
+            cache_keys = [f"{k[0]} | {k[1]}" for k in helpers.ORDER_WEBHOOK_CACHE.keys()]
+            debug_msg = f'❌ No matching webhook found.\n**Looking for:** `{name} | {addr}`\n**Available cache keys:** {"; ".join(cache_keys) if cache_keys else "None"}'
+            return await interaction.response.send_message(debug_msg, ephemeral=True)
 
+        # Create tracking embed
         e = discord.Embed(title='Order Placed', url=data.get('tracking'), color=0x00ff00)
         e.add_field(name='Store', value=data.get('store'), inline=False)
         e.add_field(name='Estimated Arrival', value=data.get('eta'), inline=False)
@@ -376,17 +403,21 @@ def setup(bot: commands.Bot):
         e.set_footer(text='Watch the tracking link for updates!')
 
         await interaction.response.send_message(embed=e)
-        helpers.ORDER_WEBHOOK_CACHE.pop((name, addr), None)
+        
+        # Remove from cache after successful use
+        original_key = None
+        for key, cached_data in helpers.ORDER_WEBHOOK_CACHE.items():
+            if cached_data == data:
+                original_key = key
+                break
+        if original_key:
+            helpers.ORDER_WEBHOOK_CACHE.pop(original_key, None)
 
     @bot.tree.command(name='debug_tracking', description='Debug webhook lookup')
     async def debug_tracking(
         interaction: discord.Interaction, search_limit: int = 50
     ):
-        """Display information about the most recent order embed and cache.
-
-        Any errors encountered will also be sent to channel ``1350935337475510297``
-        so they can be reviewed later.
-        """
+        """Display information about the most recent order embed and cache."""
 
         if not owner_only(interaction):
             return await interaction.response.send_message(
@@ -402,17 +433,62 @@ def setup(bot: commands.Bot):
                 await debug_channel.send(msg)
             return await interaction.response.send_message(msg, ephemeral=True)
 
-        embed = await fetch_order_embed(tracking_channel, search_limit=search_limit)
-        if embed is None:
-            msg = '❌ Could not locate order embed.'
+        # Try different embed types
+        ticket_embed = await fetch_ticket_embed(tracking_channel, search_limit=search_limit)
+        webhook_embed = await fetch_webhook_embed(tracking_channel, search_limit=search_limit)
+        
+        debug = discord.Embed(title='Tracking Debug', color=0xFFFF00)
+        
+        if ticket_embed:
+            info = parse_fields(ticket_embed)
+            name = normalize_name_for_matching(info.get('name', ''))
+            addr = info.get('address', info.get('addr2', '')).lower().strip()
+            debug.add_field(name='Ticket Embed Found', value='✅ Yes', inline=False)
+            debug.add_field(name='Ticket Name', value=name or 'None', inline=False)
+            debug.add_field(name='Ticket Address', value=addr or 'None', inline=False)
+        else:
+            debug.add_field(name='Ticket Embed Found', value='❌ No', inline=False)
+        
+        if webhook_embed:
+            webhook_info = parse_webhook_fields(webhook_embed)
+            webhook_name = normalize_name_for_matching(webhook_info.get('name', ''))
+            webhook_addr = webhook_info.get('address', '').lower().strip()
+            debug.add_field(name='Webhook Embed Found', value='✅ Yes', inline=False)
+            debug.add_field(name='Webhook Name', value=webhook_name or 'None', inline=False)
+            debug.add_field(name='Webhook Address', value=webhook_addr or 'None', inline=False)
+        else:
+            debug.add_field(name='Webhook Embed Found', value='❌ No', inline=False)
+        
+        # Use the best available name/address for lookup
+        if ticket_embed:
+            info = parse_fields(ticket_embed)
+            name = normalize_name_for_matching(info.get('name', ''))
+            addr = info.get('address', info.get('addr2', '')).lower().strip()
+        elif webhook_embed:
+            webhook_info = parse_webhook_fields(webhook_embed)
+            name = normalize_name_for_matching(webhook_info.get('name', ''))
+            addr = webhook_info.get('address', '').lower().strip()
+        else:
+            msg = '❌ Could not locate any order embed.'
             if debug_channel:
                 await debug_channel.send(msg)
             return await interaction.response.send_message(msg, ephemeral=True)
 
-        info = parse_fields(embed)
-        name = info.get('name', '').lower()
-        addr = info.get('address', info.get('addr2', '')).lower()
-        data = helpers.ORDER_WEBHOOK_CACHE.get((name, addr))
+        # Try to find matching data
+        data = find_matching_webhook_data(name, addr)
+        
+        debug.add_field(name='Lookup Key', value=f'{name} | {addr}', inline=False)
+        debug.add_field(name='Cache Hit', value='✅ Yes' if data else '❌ No', inline=False)
+        
+        if not data:
+            cache_keys = [f'{k[0]} | {k[1]}' for k in helpers.ORDER_WEBHOOK_CACHE.keys()]
+            debug.add_field(
+                name='Available Cache Keys', 
+                value='; '.join(cache_keys) if cache_keys else 'None', 
+                inline=False
+            )
+        else:
+            debug.add_field(name='Matched Data Store', value=data.get('store', 'None'), inline=False)
 
         status_msg = (
             f'✅ Cache hit for `{name} | {addr}`.'
@@ -421,14 +497,5 @@ def setup(bot: commands.Bot):
         )
         if debug_channel:
             await debug_channel.send(status_msg)
-
-        debug = discord.Embed(title='Tracking Debug', color=0xFFFF00)
-        debug.add_field(name='Lookup Key', value=f'{name} | {addr}', inline=False)
-        debug.add_field(name='Cache Hit', value='Yes' if data else 'No', inline=False)
-        if not data:
-            keys = [f'{k[0]} | {k[1]}' for k in helpers.ORDER_WEBHOOK_CACHE.keys()]
-            debug.add_field(
-                name='Cache Keys', value='; '.join(keys) or 'None', inline=False
-            )
 
         await interaction.response.send_message(embed=debug, ephemeral=True)
