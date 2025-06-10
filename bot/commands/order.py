@@ -998,73 +998,110 @@ def setup(bot: commands.Bot):
         if not owner_only(interaction):
             return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
         
+        # Respond immediately to avoid timeout
+        await interaction.response.send_message('🔍 Starting webhook scan...', ephemeral=True)
+        
         # Default to tracking channel if no channel specified
         if channel_id:
             try:
                 target_channel = interaction.guild.get_channel(int(channel_id))
             except ValueError:
-                return await interaction.response.send_message('❌ Invalid channel ID.', ephemeral=True)
+                return await interaction.followup.send('❌ Invalid channel ID.', ephemeral=True)
         else:
             target_channel = interaction.guild.get_channel(1352067371006693499)  # Default tracking channel
         
         if not target_channel:
-            return await interaction.response.send_message('❌ Channel not found.', ephemeral=True)
+            return await interaction.followup.send('❌ Channel not found.', ephemeral=True)
         
         found_webhooks = 0
         cached_webhooks = 0
         tracking_webhooks = 0
         checkout_webhooks = 0
+        processed_messages = 0
+        errors = []
         
         try:
+            # Send progress updates during scanning
+            progress_message = None
+            
             async for message in target_channel.history(limit=search_limit):
+                processed_messages += 1
+                
+                # Send progress update every 25 messages
+                if processed_messages % 25 == 0:
+                    try:
+                        if progress_message is None:
+                            progress_message = await interaction.followup.send(
+                                f'📊 Progress: {processed_messages}/{search_limit} messages scanned...', 
+                                ephemeral=True
+                            )
+                        else:
+                            await progress_message.edit(
+                                content=f'📊 Progress: {processed_messages}/{search_limit} messages scanned...'
+                            )
+                    except Exception:
+                        # Ignore progress update errors
+                        pass
+                
                 if message.webhook_id and message.embeds:
                     for embed in message.embeds:
-                        field_names = {f.name for f in embed.fields}
-                        
-                        # Check for tracking webhook (Store, Name, Delivery Address)
-                        is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
-                        
-                        # Check for checkout webhook - also check description for embedded content
-                        is_checkout = (
-                            "Account Email" in field_names or 
-                            "Delivery Information" in field_names or
-                            "Items In Bag" in field_names or
-                            (embed.title and "Checkout Successful" in embed.title) or
-                            (embed.description and "Checkout Successful" in embed.description) or
-                            ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
-                            # New check for description-based checkout webhooks
-                            (len(embed.fields) == 0 and embed.description and 
-                             any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
-                        )
-                        
-                        if is_tracking or is_checkout:
-                            found_webhooks += 1
+                        try:
+                            field_names = {f.name for f in embed.fields}
                             
-                            if is_tracking:
-                                tracking_webhooks += 1
-                            elif is_checkout:
-                                checkout_webhooks += 1
+                            # Check for tracking webhook (Store, Name, Delivery Address)
+                            is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
                             
-                            data = helpers.parse_webhook_fields(embed)
-                            name = helpers.normalize_name_for_matching(data.get('name', ''))
-                            addr = data.get('address', '').lower().strip()
+                            # Check for checkout webhook - also check description for embedded content
+                            is_checkout = (
+                                "Account Email" in field_names or 
+                                "Delivery Information" in field_names or
+                                "Items In Bag" in field_names or
+                                (embed.title and "Checkout Successful" in embed.title) or
+                                (embed.description and "Checkout Successful" in embed.description) or
+                                ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
+                                # New check for description-based checkout webhooks
+                                (len(embed.fields) == 0 and embed.description and 
+                                any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
+                            )
                             
-                            if name:  # Only cache if we have a valid name
-                                cache_key = (name, addr)
-                                if cache_key not in helpers.ORDER_WEBHOOK_CACHE:
-                                    helpers.ORDER_WEBHOOK_CACHE[cache_key] = data
-                                    cached_webhooks += 1
+                            if is_tracking or is_checkout:
+                                found_webhooks += 1
+                                
+                                if is_tracking:
+                                    tracking_webhooks += 1
+                                elif is_checkout:
+                                    checkout_webhooks += 1
+                                
+                                data = helpers.parse_webhook_fields(embed)
+                                name = helpers.normalize_name_for_matching(data.get('name', ''))
+                                addr = data.get('address', '').lower().strip()
+                                
+                                if name:  # Only cache if we have a valid name
+                                    cache_key = (name, addr)
+                                    if cache_key not in helpers.ORDER_WEBHOOK_CACHE:
+                                        helpers.ORDER_WEBHOOK_CACHE[cache_key] = data
+                                        cached_webhooks += 1
+                        
+                        except Exception as e:
+                            errors.append(f"Error parsing embed in message {message.id}: {str(e)}")
+                            continue
+                            
         except Exception as e:
-            return await interaction.response.send_message(f'❌ Error scanning channel: {str(e)}', ephemeral=True)
+            await interaction.followup.send(f'❌ Error scanning channel: {str(e)}', ephemeral=True)
+            return
         
+        # Send final results
         embed = discord.Embed(title='Webhook Scan Results', color=0x00FF00)
         embed.add_field(name='Channel Scanned', value=target_channel.mention, inline=False)
-        embed.add_field(name='Messages Searched', value=str(search_limit), inline=False)
+        embed.add_field(name='Messages Searched', value=str(processed_messages), inline=False)
         embed.add_field(name='Total Webhook Orders Found', value=str(found_webhooks), inline=False)
         embed.add_field(name='├─ Tracking Webhooks', value=str(tracking_webhooks), inline=True)
         embed.add_field(name='└─ Checkout Webhooks', value=str(checkout_webhooks), inline=True)
         embed.add_field(name='New Entries Cached', value=str(cached_webhooks), inline=False)
         embed.add_field(name='Total Cache Size', value=str(len(helpers.ORDER_WEBHOOK_CACHE)), inline=False)
+        
+        if errors:
+            embed.add_field(name='Errors Encountered', value=f'{len(errors)} parsing errors', inline=False)
         
         if helpers.ORDER_WEBHOOK_CACHE:
             recent_names = []
@@ -1074,51 +1111,63 @@ def setup(bot: commands.Bot):
                 recent_names.append(f"{name} ({store}) [{webhook_type}]")
             embed.add_field(name='Recent Cached Names', value='\n'.join(recent_names), inline=False)
         
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        # Clean up progress message if it exists
+        if progress_message:
+            try:
+                await progress_message.delete()
+            except Exception:
+                pass
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        
+        # If there were errors, send them in a separate message
+        if errors and len(errors) <= 10:
+            error_text = '\n'.join(errors[:10])
+            await interaction.followup.send(f'⚠️ **Parsing Errors:**\n```\n{error_text}\n```', ephemeral=True)
 
-    @bot.tree.command(name='check_cache', description='Show current webhook cache contents')
-    async def check_cache(interaction: discord.Interaction):
-        """Show what's currently in the webhook cache"""
-        
-        if not owner_only(interaction):
-            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
-        
-        if not helpers.ORDER_WEBHOOK_CACHE:
-            return await interaction.response.send_message('📭 Webhook cache is empty.', ephemeral=True)
-        
-        embed = discord.Embed(title='Webhook Cache Contents', color=0x0099FF)
-        embed.add_field(name='Total Entries', value=str(len(helpers.ORDER_WEBHOOK_CACHE)), inline=False)
-        
-        # Count by type
-        tracking_count = sum(1 for data in helpers.ORDER_WEBHOOK_CACHE.values() if data.get('type') == 'tracking')
-        checkout_count = sum(1 for data in helpers.ORDER_WEBHOOK_CACHE.values() if data.get('type') == 'checkout')
-        unknown_count = len(helpers.ORDER_WEBHOOK_CACHE) - tracking_count - checkout_count
-        
-        type_summary = []
-        if tracking_count > 0:
-            type_summary.append(f"Tracking: {tracking_count}")
-        if checkout_count > 0:
-            type_summary.append(f"Checkout: {checkout_count}")
-        if unknown_count > 0:
-            type_summary.append(f"Unknown: {unknown_count}")
-        
-        if type_summary:
-            embed.add_field(name='By Type', value=' | '.join(type_summary), inline=False)
-        
-        cache_entries = []
-        for (name, addr), data in helpers.ORDER_WEBHOOK_CACHE.items():
-            store = data.get('store', 'Unknown')
-            webhook_type = data.get('type', 'unknown')
-            cache_entries.append(f"**{name}** → {store} `[{webhook_type}]`")
-        
-        # Show up to 10 entries
-        if len(cache_entries) <= 10:
-            embed.add_field(name='All Cached Orders', value='\n'.join(cache_entries), inline=False)
-        else:
-            embed.add_field(name='Recent 10 Cached Orders', value='\n'.join(cache_entries[-10:]), inline=False)
-            embed.add_field(name='Note', value=f'Showing last 10 of {len(cache_entries)} total entries', inline=False)
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        @bot.tree.command(name='check_cache', description='Show current webhook cache contents')
+        async def check_cache(interaction: discord.Interaction):
+            """Show what's currently in the webhook cache"""
+            
+            if not owner_only(interaction):
+                return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+            
+            if not helpers.ORDER_WEBHOOK_CACHE:
+                return await interaction.response.send_message('📭 Webhook cache is empty.', ephemeral=True)
+            
+            embed = discord.Embed(title='Webhook Cache Contents', color=0x0099FF)
+            embed.add_field(name='Total Entries', value=str(len(helpers.ORDER_WEBHOOK_CACHE)), inline=False)
+            
+            # Count by type
+            tracking_count = sum(1 for data in helpers.ORDER_WEBHOOK_CACHE.values() if data.get('type') == 'tracking')
+            checkout_count = sum(1 for data in helpers.ORDER_WEBHOOK_CACHE.values() if data.get('type') == 'checkout')
+            unknown_count = len(helpers.ORDER_WEBHOOK_CACHE) - tracking_count - checkout_count
+            
+            type_summary = []
+            if tracking_count > 0:
+                type_summary.append(f"Tracking: {tracking_count}")
+            if checkout_count > 0:
+                type_summary.append(f"Checkout: {checkout_count}")
+            if unknown_count > 0:
+                type_summary.append(f"Unknown: {unknown_count}")
+            
+            if type_summary:
+                embed.add_field(name='By Type', value=' | '.join(type_summary), inline=False)
+            
+            cache_entries = []
+            for (name, addr), data in helpers.ORDER_WEBHOOK_CACHE.items():
+                store = data.get('store', 'Unknown')
+                webhook_type = data.get('type', 'unknown')
+                cache_entries.append(f"**{name}** → {store} `[{webhook_type}]`")
+            
+            # Show up to 10 entries
+            if len(cache_entries) <= 10:
+                embed.add_field(name='All Cached Orders', value='\n'.join(cache_entries), inline=False)
+            else:
+                embed.add_field(name='Recent 10 Cached Orders', value='\n'.join(cache_entries[-10:]), inline=False)
+                embed.add_field(name='Note', value=f'Showing last 10 of {len(cache_entries)} total entries', inline=False)
+            
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name='find_ticket', description='Search for ticket embed in channel')
     async def find_ticket(interaction: discord.Interaction, search_limit: int = 100):
