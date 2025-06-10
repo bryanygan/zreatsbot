@@ -39,20 +39,48 @@ async def fetch_order_embed(
         return None
 
 async def fetch_ticket_embed(
-    channel: discord.TextChannel, search_limit: int = 25
+    channel: discord.TextChannel, search_limit: int = 100
 ) -> Optional[discord.Embed]:
     """Specifically fetch ticket embeds (with Group Cart Link)"""
     try:
         async for msg in channel.history(limit=search_limit, oldest_first=False):
-            if len(msg.embeds) < 2:
+            if len(msg.embeds) < 1:
                 continue
-            embed = msg.embeds[1]
-            field_names = {f.name for f in embed.fields}
-            if {"Group Cart Link", "Name"}.issubset(field_names):
-                return embed
+            
+            # Check all embeds in the message, not just the second one
+            for i, embed in enumerate(msg.embeds):
+                field_names = {f.name for f in embed.fields}
+                # Look for various possible ticket embed patterns
+                if ({"Group Cart Link", "Name"}.issubset(field_names) or
+                    {"Group Link", "Name"}.issubset(field_names) or
+                    any("Group" in name and "Link" in name for name in field_names) and "Name" in field_names):
+                    return embed
         return None
     except Exception:
         return None
+
+async def debug_all_embeds(
+    channel: discord.TextChannel, search_limit: int = 25
+) -> list:
+    """Debug function to show all embeds found in channel"""
+    embeds_info = []
+    try:
+        async for msg in channel.history(limit=search_limit, oldest_first=False):
+            if msg.embeds:
+                for i, embed in enumerate(msg.embeds):
+                    field_names = [f.name for f in embed.fields]
+                    embeds_info.append({
+                        'message_id': msg.id,
+                        'embed_index': i,
+                        'title': embed.title or 'No Title',
+                        'field_names': field_names,
+                        'field_count': len(embed.fields),
+                        'author': str(msg.author),
+                        'webhook_id': msg.webhook_id
+                    })
+    except Exception as e:
+        embeds_info.append({'error': str(e)})
+    return embeds_info
 
 async def fetch_webhook_embed(
     channel: discord.TextChannel, search_limit: int = 25
