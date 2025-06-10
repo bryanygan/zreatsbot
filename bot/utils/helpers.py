@@ -1,6 +1,7 @@
 import os
 import discord
 from typing import Optional
+from datetime import datetime
 
 OWNER_ID = int(os.getenv('OWNER_ID')) if os.getenv('OWNER_ID') else None
 
@@ -280,8 +281,8 @@ def find_latest_matching_webhook_data(name: str, address: str = '') -> dict:
     
     matches = []
     
-    # Collect all matching webhooks with their cache keys
-    for (cached_name, cached_addr), data in ORDER_WEBHOOK_CACHE.items():
+    # Collect all matching webhooks with their timestamps
+    for (cached_name, cached_addr), cache_entry in ORDER_WEBHOOK_CACHE.items():
         cached_normalized = normalize_name_for_matching(cached_name)
         
         # Try different matching strategies
@@ -305,7 +306,9 @@ def find_latest_matching_webhook_data(name: str, address: str = '') -> dict:
         
         if is_match:
             matches.append({
-                'data': data,
+                'data': cache_entry['data'],
+                'timestamp': cache_entry['timestamp'],
+                'message_id': cache_entry.get('message_id'),
                 'cache_key': (cached_name, cached_addr),
                 'match_type': match_type
             })
@@ -313,21 +316,15 @@ def find_latest_matching_webhook_data(name: str, address: str = '') -> dict:
     if not matches:
         return None
     
-    # Sort by match quality (exact > name_exact > name_partial) and then by recency
-    # Since ORDER_WEBHOOK_CACHE is ordered by insertion, later entries are more recent
-    cache_keys = list(ORDER_WEBHOOK_CACHE.keys())
-    
+    # Sort by match quality first, then by recency (most recent first)
     def match_score(match):
         type_scores = {"exact": 3, "name_exact": 2, "name_partial": 1}
         type_score = type_scores.get(match['match_type'], 0)
-        # Get position in cache (later = higher score for recency)
-        try:
-            recency_score = cache_keys.index(match['cache_key'])
-        except ValueError:
-            recency_score = 0
-        return (type_score, recency_score)
+        # Use timestamp for recency (newer = higher score)
+        timestamp_score = match['timestamp'].timestamp()
+        return (type_score, timestamp_score)
     
-    # Get the best match (highest score)
+    # Get the best match (highest score = best type + most recent)
     best_match = max(matches, key=match_score)
     return best_match['data']
 
@@ -411,3 +408,28 @@ def find_matching_webhook_data(name: str, address: str = '') -> dict:
             return data
     
     return None
+
+def cache_webhook_data(data: dict, message_timestamp: datetime = None, message_id: int = None):
+    """Cache webhook data with timestamp for recency tracking"""
+    name = normalize_name_for_matching(data.get('name', ''))
+    addr = data.get('address', '').lower().strip()
+    
+    if not name:
+        return False
+    
+    cache_key = (name, addr)
+    timestamp = message_timestamp or datetime.now()
+    
+    # Only update cache if this is more recent than existing entry
+    if cache_key in ORDER_WEBHOOK_CACHE:
+        existing_timestamp = ORDER_WEBHOOK_CACHE[cache_key]['timestamp']
+        if timestamp <= existing_timestamp:
+            return False  # Don't cache older data
+    
+    ORDER_WEBHOOK_CACHE[cache_key] = {
+        'data': data,
+        'timestamp': timestamp,
+        'message_id': message_id
+    }
+    return True
+

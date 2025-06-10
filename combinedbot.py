@@ -208,24 +208,27 @@ def main():
                     ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
                     # Description-based checkout webhooks (like stewardess)
                     (len(embed.fields) == 0 and embed.description and 
-                     any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
+                    any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
                 )
                 
                 if is_tracking or is_checkout:
                     try:
                         data = helpers.parse_webhook_fields(embed)
-                        name = helpers.normalize_name_for_matching(data.get('name', ''))
-                        addr = data.get('address', '').lower().strip()
                         
-                        if name:  # Only cache if we have a valid name
-                            # Store with normalized name for better matching
-                            cache_key = (name, addr)
-                            helpers.ORDER_WEBHOOK_CACHE[cache_key] = data
+                        # Cache with message timestamp for proper ordering
+                        success = helpers.cache_webhook_data(
+                            data, 
+                            message_timestamp=message.created_at,
+                            message_id=message.id
+                        )
+                        
+                        if success:
                             webhook_type = data.get('type', 'unknown')
                             store = data.get('store', 'Unknown')
-                            print(f"📦 Cached {webhook_type} webhook: {name} | {addr} at {store}")
+                            name = data.get('name', 'Unknown')
+                            print(f"📦 Cached {webhook_type} webhook: {name} at {store} (Message: {message.id})")
                         else:
-                            print(f"⚠️ Webhook detected but no name found: {embed.title or 'No title'}")
+                            print(f"⚠️ Skipped older webhook for: {data.get('name', 'Unknown')}")
                     except Exception as e:
                         print(f"❌ Error parsing webhook: {str(e)}")
 

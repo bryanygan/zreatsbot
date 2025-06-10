@@ -1015,6 +1015,7 @@ def setup(bot: commands.Bot):
         
         found_webhooks = 0
         cached_webhooks = 0
+        updated_webhooks = 0
         tracking_webhooks = 0
         checkout_webhooks = 0
         processed_messages = 0
@@ -1073,14 +1074,18 @@ def setup(bot: commands.Bot):
                                     checkout_webhooks += 1
                                 
                                 data = helpers.parse_webhook_fields(embed)
-                                name = helpers.normalize_name_for_matching(data.get('name', ''))
-                                addr = data.get('address', '').lower().strip()
                                 
-                                if name:  # Only cache if we have a valid name
-                                    cache_key = (name, addr)
-                                    if cache_key not in helpers.ORDER_WEBHOOK_CACHE:
-                                        helpers.ORDER_WEBHOOK_CACHE[cache_key] = data
-                                        cached_webhooks += 1
+                                # Use new caching function with timestamp
+                                success = helpers.cache_webhook_data(
+                                    data,
+                                    message_timestamp=message.created_at,
+                                    message_id=message.id
+                                )
+                                
+                                if success:
+                                    cached_webhooks += 1
+                                else:
+                                    updated_webhooks += 1  # Older entry, didn't update cache
                         
                         except Exception as e:
                             errors.append(f"Error parsing embed in message {message.id}: {str(e)}")
@@ -1098,18 +1103,27 @@ def setup(bot: commands.Bot):
         embed.add_field(name='├─ Tracking Webhooks', value=str(tracking_webhooks), inline=True)
         embed.add_field(name='└─ Checkout Webhooks', value=str(checkout_webhooks), inline=True)
         embed.add_field(name='New Entries Cached', value=str(cached_webhooks), inline=False)
+        embed.add_field(name='Older Entries Skipped', value=str(updated_webhooks), inline=False)
         embed.add_field(name='Total Cache Size', value=str(len(helpers.ORDER_WEBHOOK_CACHE)), inline=False)
         
         if errors:
             embed.add_field(name='Errors Encountered', value=f'{len(errors)} parsing errors', inline=False)
         
         if helpers.ORDER_WEBHOOK_CACHE:
+            # Show most recent entries by timestamp
+            sorted_cache = sorted(
+                helpers.ORDER_WEBHOOK_CACHE.items(),
+                key=lambda x: x[1]['timestamp'],
+                reverse=True
+            )
             recent_names = []
-            for (name, addr), data in list(helpers.ORDER_WEBHOOK_CACHE.items())[-5:]:
+            for (name, addr), cache_entry in sorted_cache[:5]:
+                data = cache_entry['data']
                 store = data.get('store', 'Unknown')
                 webhook_type = data.get('type', 'unknown')
-                recent_names.append(f"{name} ({store}) [{webhook_type}]")
-            embed.add_field(name='Recent Cached Names', value='\n'.join(recent_names), inline=False)
+                timestamp = cache_entry['timestamp'].strftime('%m/%d %H:%M')
+                recent_names.append(f"{name} ({store}) [{webhook_type}] - {timestamp}")
+            embed.add_field(name='Most Recent Cached Orders', value='\n'.join(recent_names), inline=False)
         
         # Clean up progress message if it exists
         if progress_message:
@@ -1124,6 +1138,11 @@ def setup(bot: commands.Bot):
         if errors and len(errors) <= 10:
             error_text = '\n'.join(errors[:10])
             await interaction.followup.send(f'⚠️ **Parsing Errors:**\n```\n{error_text}\n```', ephemeral=True)
+            
+            # If there were errors, send them in a separate message
+            if errors and len(errors) <= 10:
+                error_text = '\n'.join(errors[:10])
+                await interaction.followup.send(f'⚠️ **Parsing Errors:**\n```\n{error_text}\n```', ephemeral=True)
 
         @bot.tree.command(name='check_cache', description='Show current webhook cache contents')
         async def check_cache(interaction: discord.Interaction):
@@ -1276,5 +1295,74 @@ def setup(bot: commands.Bot):
         
         if len(results) > 3:
             embed.add_field(name='Note', value=f'Showing first 3 of {len(results)} results', inline=False)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name='debug_cache_timestamps', description='Show cache entries with timestamps for debugging')
+    async def debug_cache_timestamps(interaction: discord.Interaction, name_filter: str = None):
+        """Show cache entries with timestamps to debug recency issues"""
+        
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+        
+        if not helpers.ORDER_WEBHOOK_CACHE:
+            return await interaction.response.send_message('📭 Webhook cache is empty.', ephemeral=True)
+        
+        # Filter entries if name provided
+        filtered_cache = {}
+        if name_filter:
+            name_filter_lower = name_filter.lower()
+            for key, cache_entry in helpers.ORDER_WEBHOOK_CACHE.items():
+                name, addr = key
+                if name_filter_lower in name.lower():
+                    filtered_cache[key] = cache_entry
+        else:
+            filtered_cache = helpers.ORDER_WEBHOOK_CACHE
+        
+        if not filtered_cache:
+            return await interaction.response.send_message(f'📭 No cache entries found matching "{name_filter}".', ephemeral=True)
+        
+        # Sort by timestamp (most recent first)
+        sorted_entries = sorted(
+            filtered_cache.items(),
+            key=lambda x: x[1]['timestamp'],
+            reverse=True
+        )
+        
+        embed = discord.Embed(title='Cache Debug - Timestamps', color=0xFF9900)
+        if name_filter:
+            embed.add_field(name='Filter Applied', value=f'Names containing: "{name_filter}"', inline=False)
+        
+        embed.add_field(name='Total Entries', value=f'{len(filtered_cache)} (of {len(helpers.ORDER_WEBHOOK_CACHE)} total)', inline=False)
+        
+        # Show detailed entries
+        entries_text = []
+        for i, ((name, addr), cache_entry) in enumerate(sorted_entries[:10], 1):
+            data = cache_entry['data']
+            timestamp = cache_entry['timestamp']
+            message_id = cache_entry.get('message_id', 'Unknown')
+            
+            store = data.get('store', 'Unknown')
+            webhook_type = data.get('type', 'unknown')
+            
+            # Format timestamp
+            time_str = timestamp.strftime('%m/%d/%Y %H:%M:%S')
+            
+            entries_text.append(
+                f"**{i}. {name}**\n"
+                f"   Store: {store} | Type: {webhook_type}\n"
+                f"   Time: {time_str} | Msg: {message_id}\n"
+                f"   Address: {addr[:50]}{'...' if len(addr) > 50 else ''}"
+            )
+        
+        if entries_text:
+            embed.add_field(
+                name=f'Most Recent {min(10, len(sorted_entries))} Entries',
+                value='\n\n'.join(entries_text),
+                inline=False
+            )
+        
+        if len(sorted_entries) > 10:
+            embed.add_field(name='Note', value=f'Showing most recent 10 of {len(sorted_entries)} entries', inline=False)
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
