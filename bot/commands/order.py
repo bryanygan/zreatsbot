@@ -305,7 +305,158 @@ def setup(bot: commands.Bot):
                 inline=False
             )
         
-        await interaction.response.send_message(embed=embed_response, ephemeral=True)
+    @bot.tree.command(name='simple_embed_debug', description='Simple embed debugging without fetching messages')
+    async def simple_embed_debug(interaction: discord.Interaction, search_limit: int = 10):
+        """Simple embed debugging that just looks at message history"""
+        
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+        
+        results = []
+        
+        try:
+            async for message in interaction.channel.history(limit=search_limit):
+                if message.embeds:
+                    for i, embed in enumerate(message.embeds):
+                        try:
+                            field_names = [f.name for f in embed.fields]
+                            field_names_set = set(field_names)
+                            
+                            # Safe access to properties
+                            title = getattr(embed, 'title', None) or ''
+                            description = getattr(embed, 'description', None) or ''
+                            
+                            # Test detection logic safely
+                            is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names_set)
+                            is_checkout = (
+                                "Account Email" in field_names_set or 
+                                "Delivery Information" in field_names_set or
+                                "Items In Bag" in field_names_set or
+                                ("Checkout Successful" in title) or
+                                ("Checkout Successful" in description) or
+                                ("Store" in field_names_set and any(x in field_names_set for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"]))
+                            )
+                            
+                            results.append({
+                                'message_id': message.id,
+                                'embed_index': i,
+                                'is_webhook': bool(getattr(message, 'webhook_id', None)),
+                                'webhook_id': getattr(message, 'webhook_id', None),
+                                'author_name': str(message.author),
+                                'title': title[:100] + ('...' if len(title) > 100 else ''),
+                                'description': description[:100] + ('...' if len(description) > 100 else ''),
+                                'field_count': len(embed.fields),
+                                'field_names': field_names,
+                                'is_tracking': is_tracking,
+                                'is_checkout': is_checkout,
+                                'would_process': bool(getattr(message, 'webhook_id', None)) and (is_tracking or is_checkout)
+                            })
+                        except Exception as e:
+                            results.append({
+                                'message_id': message.id,
+                                'embed_index': i,
+                                'error': f'Error processing embed: {str(e)}'
+                            })
+        
+        except Exception as e:
+            return await interaction.response.send_message(f'❌ Error scanning messages: {str(e)}', ephemeral=True)
+        
+        if not results:
+            return await interaction.response.send_message('📭 No embeds found in recent messages.', ephemeral=True)
+        
+        # Create summary
+        total_embeds = len(results)
+        webhook_embeds = sum(1 for r in results if r.get('is_webhook', False))
+        tracking_detected = sum(1 for r in results if r.get('is_tracking', False))
+        checkout_detected = sum(1 for r in results if r.get('is_checkout', False))
+        would_process = sum(1 for r in results if r.get('would_process', False))
+        
+        summary_embed = discord.Embed(title='Simple Embed Debug Results', color=0x00FF00)
+        summary_embed.add_field(name='Summary', 
+                               value=f'**Total Embeds**: {total_embeds}\n**Webhook Embeds**: {webhook_embeds}\n**Tracking Detected**: {tracking_detected}\n**Checkout Detected**: {checkout_detected}\n**Would Process**: {would_process}',
+                               inline=False)
+        
+        # Show details for first few embeds
+        for result in results[:5]:
+            if 'error' in result:
+                summary_embed.add_field(name=f'Message {result["message_id"]} (Error)', 
+                                       value=result['error'], inline=False)
+            else:
+                field_names_str = ', '.join(result['field_names'][:5])
+                if len(result['field_names']) > 5:
+                    field_names_str += '...'
+                
+                summary_embed.add_field(
+                    name=f'Message {result["message_id"]} (Embed {result["embed_index"]})',
+                    value=f'**Webhook**: {"✅" if result["is_webhook"] else "❌"}\n**Author**: {result["author_name"]}\n**Title**: {result["title"] or "None"}\n**Fields**: {field_names_str}\n**Tracking**: {"✅" if result["is_tracking"] else "❌"}\n**Checkout**: {"✅" if result["is_checkout"] else "❌"}\n**Would Process**: {"✅" if result["would_process"] else "❌"}',
+                    inline=False
+                )
+        
+        if len(results) > 5:
+            summary_embed.add_field(name='Note', value=f'Showing first 5 of {len(results)} embeds', inline=False)
+        
+        await interaction.response.send_message(embed=summary_embed, ephemeral=True)
+
+    @bot.tree.command(name='raw_field_debug', description='Show raw field names and values for recent embeds')
+    async def raw_field_debug(interaction: discord.Interaction, search_limit: int = 5):
+        """Show raw field data to debug field name issues"""
+        
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+        
+        found_embeds = []
+        
+        try:
+            async for message in interaction.channel.history(limit=search_limit):
+                if message.embeds:
+                    for i, embed in enumerate(message.embeds):
+                        embed_data = {
+                            'message_id': message.id,
+                            'embed_index': i,
+                            'is_webhook': bool(getattr(message, 'webhook_id', None)),
+                            'title': getattr(embed, 'title', None),
+                            'description': getattr(embed, 'description', None),
+                            'fields': []
+                        }
+                        
+                        for field in embed.fields:
+                            embed_data['fields'].append({
+                                'name': repr(field.name),  # Use repr to see exact string
+                                'value_preview': (field.value or '')[:150] + ('...' if field.value and len(field.value) > 150 else ''),
+                                'inline': field.inline
+                            })
+                        
+                        found_embeds.append(embed_data)
+        
+        except Exception as e:
+            return await interaction.response.send_message(f'❌ Error: {str(e)}', ephemeral=True)
+        
+        if not found_embeds:
+            return await interaction.response.send_message('📭 No embeds found.', ephemeral=True)
+        
+        # Show detailed field info for each embed
+        for embed_data in found_embeds[:3]:  # Show first 3 embeds
+            debug_embed = discord.Embed(title=f'Raw Fields: Message {embed_data["message_id"]}', color=0xFF9900)
+            debug_embed.add_field(name='Basic Info',
+                                 value=f'**Is Webhook**: {embed_data["is_webhook"]}\n**Title**: {embed_data["title"] or "None"}\n**Field Count**: {len(embed_data["fields"])}',
+                                 inline=False)
+            
+            if embed_data['fields']:
+                field_list = []
+                for j, field in enumerate(embed_data['fields'][:10]):  # Show first 10 fields
+                    field_list.append(f'{j+1}. {field["name"]} = "{field["value_preview"]}"')
+                
+                debug_embed.add_field(name='Field Names & Values',
+                                     value='\n'.join(field_list) if field_list else 'No fields',
+                                     inline=False)
+                
+                if len(embed_data['fields']) > 10:
+                    debug_embed.add_field(name='Note', value=f'Showing first 10 of {len(embed_data["fields"])} fields', inline=False)
+            
+            await interaction.followup.send(embed=debug_embed, ephemeral=True)
+        
+        # Send initial response
+        await interaction.response.send_message(f'📊 Found {len(found_embeds)} embeds. Showing detailed field info for first 3.', ephemeral=True)
 
     @bot.tree.command(name='wool_details', description='Show parsed Wool order details')
     async def wool_details(interaction: discord.Interaction):
