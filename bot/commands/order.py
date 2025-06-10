@@ -879,8 +879,6 @@ def setup(bot: commands.Bot):
             e.add_field(name='Name', value=data.get('name'), inline=False)
             if data.get('address'):
                 e.add_field(name='Delivery Address', value=data.get('address'), inline=False)
-            if data.get('payment'):
-                e.add_field(name='Account Email', value=data.get('payment'), inline=False)
             e.set_footer(text=f'Checkout confirmed • Type: {webhook_type}')
 
         await interaction.response.send_message(embed=e)
@@ -1335,34 +1333,60 @@ def setup(bot: commands.Bot):
         
         embed.add_field(name='Total Entries', value=f'{len(filtered_cache)} (of {len(helpers.ORDER_WEBHOOK_CACHE)} total)', inline=False)
         
-        # Show detailed entries
-        entries_text = []
-        for i, ((name, addr), cache_entry) in enumerate(sorted_entries[:10], 1):
+        # Show detailed entries with character limit handling
+        entries_shown = 0
+        current_field_text = ""
+        field_number = 1
+        
+        for i, ((name, addr), cache_entry) in enumerate(sorted_entries[:15], 1):
             data = cache_entry['data']
             timestamp = cache_entry['timestamp']
             message_id = cache_entry.get('message_id', 'Unknown')
             
-            store = data.get('store', 'Unknown')
+            store = data.get('store', 'Unknown')[:20] + ('...' if len(data.get('store', 'Unknown')) > 20 else '')
             webhook_type = data.get('type', 'unknown')
             
-            # Format timestamp
-            time_str = timestamp.strftime('%m/%d/%Y %H:%M:%S')
+            # Format timestamp (shorter format)
+            time_str = timestamp.strftime('%m/%d %H:%M')
             
-            entries_text.append(
-                f"**{i}. {name}**\n"
-                f"   Store: {store} | Type: {webhook_type}\n"
-                f"   Time: {time_str} | Msg: {message_id}\n"
-                f"   Address: {addr[:50]}{'...' if len(addr) > 50 else ''}"
+            entry_text = (
+                f"**{i}. {name[:25]}{'...' if len(name) > 25 else ''}**\n"
+                f"   {store} | {webhook_type} | {time_str}\n"
+                f"   Msg: {message_id}\n"
             )
+            
+            # Check if adding this entry would exceed the 1024 limit
+            if len(current_field_text + entry_text) > 1000:
+                # Add current field and start a new one
+                if current_field_text:
+                    embed.add_field(
+                        name=f'Recent Entries (Part {field_number})',
+                        value=current_field_text,
+                        inline=False
+                    )
+                    field_number += 1
+                    current_field_text = entry_text
+                else:
+                    # Single entry is too long, truncate it
+                    current_field_text = entry_text[:1000] + "..."
+            else:
+                current_field_text += entry_text
+            
+            entries_shown += 1
+            
+            # Limit to prevent too many fields
+            if field_number > 3:
+                break
         
-        if entries_text:
+        # Add the final field if there's content
+        if current_field_text:
             embed.add_field(
-                name=f'Most Recent {min(10, len(sorted_entries))} Entries',
-                value='\n\n'.join(entries_text),
+                name=f'Recent Entries (Part {field_number})' if field_number > 1 else f'Most Recent {entries_shown} Entries',
+                value=current_field_text,
                 inline=False
             )
         
-        if len(sorted_entries) > 10:
-            embed.add_field(name='Note', value=f'Showing most recent 10 of {len(sorted_entries)} entries', inline=False)
+        if len(sorted_entries) > entries_shown:
+            embed.add_field(name='Note', value=f'Showing {entries_shown} of {len(sorted_entries)} entries (truncated due to Discord limits)', inline=False)
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
