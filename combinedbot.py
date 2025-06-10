@@ -189,7 +189,7 @@ def main():
                 await message.add_reaction("❌")
                 await message.channel.send(f"{message.author.mention} ❌ {error}", delete_after=10)
 
-        # Improved webhook order processing
+        # Improved webhook order processing - matches all detection patterns
         if message.webhook_id and message.embeds:
             for embed in message.embeds:
                 # Check if this looks like an order confirmation embed
@@ -198,7 +198,7 @@ def main():
                 # Check for tracking webhook (Store, Name, Delivery Address)
                 is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
                 
-                # Check for checkout webhook - also check description for embedded content
+                # Check for checkout webhook - comprehensive detection
                 is_checkout = (
                     "Account Email" in field_names or 
                     "Delivery Information" in field_names or
@@ -206,25 +206,28 @@ def main():
                     (embed.title and "Checkout Successful" in embed.title) or
                     (embed.description and "Checkout Successful" in embed.description) or
                     ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
-                    # New check for description-based checkout webhooks
+                    # Description-based checkout webhooks (like stewardess)
                     (len(embed.fields) == 0 and embed.description and 
                      any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
                 )
                 
                 if is_tracking or is_checkout:
-                    data = helpers.parse_webhook_fields(embed)
-                    name = helpers.normalize_name_for_matching(data.get('name', ''))
-                    addr = data.get('address', '').lower().strip()
-                    
-                    if name:  # Only cache if we have a valid name
-                        # Store with normalized name for better matching
-                        # Use a timestamp-based key to preserve order (latest wins)
-                        import time
-                        cache_key = (name, addr)
-                        helpers.ORDER_WEBHOOK_CACHE[cache_key] = data
-                        webhook_type = data.get('type', 'unknown')
-                        store = data.get('store', 'Unknown')
-                        print(f"📦 Cached {webhook_type} webhook: {name} | {addr} at {store}")
+                    try:
+                        data = helpers.parse_webhook_fields(embed)
+                        name = helpers.normalize_name_for_matching(data.get('name', ''))
+                        addr = data.get('address', '').lower().strip()
+                        
+                        if name:  # Only cache if we have a valid name
+                            # Store with normalized name for better matching
+                            cache_key = (name, addr)
+                            helpers.ORDER_WEBHOOK_CACHE[cache_key] = data
+                            webhook_type = data.get('type', 'unknown')
+                            store = data.get('store', 'Unknown')
+                            print(f"📦 Cached {webhook_type} webhook: {name} | {addr} at {store}")
+                        else:
+                            print(f"⚠️ Webhook detected but no name found: {embed.title or 'No title'}")
+                    except Exception as e:
+                        print(f"❌ Error parsing webhook: {str(e)}")
 
         await bot.process_commands(message)
 
