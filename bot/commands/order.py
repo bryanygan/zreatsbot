@@ -860,9 +860,15 @@ def setup(bot: commands.Bot):
 
         # Create tracking embed based on webhook type
         webhook_type = data.get('type', 'unknown')
-        
+        tracking_url = data.get('tracking', '')
+
         if webhook_type == 'tracking':
             e = discord.Embed(title='Order Placed!', url=data.get('tracking'), color=0x00ff00)
+
+            if tracking_url:
+                tracking_text = f"Here are your order details:\n**Tracking Link**\n[Click here]({tracking_url})"
+                e.add_field(name='', value=tracking_text, inline=False)
+            
             e.add_field(name='Store', value=data.get('store'), inline=False)
             e.add_field(name='Estimated Arrival', value=data.get('eta'), inline=False)
             e.add_field(name='Order Items', value=data.get('items'), inline=False)
@@ -871,6 +877,11 @@ def setup(bot: commands.Bot):
             e.set_footer(text='Watch the tracking link for updates!')
         else:  # checkout or unknown
             e = discord.Embed(title='Checkout Successful!', url=data.get('tracking'), color=0x00ff00)
+            
+            if tracking_url:
+                tracking_text = f"Here are your order details:\n**Tracking Link**\n[Click here]({tracking_url})"
+                e.add_field(name='', value=tracking_text, inline=False)
+            
             e.add_field(name='Store', value=data.get('store'), inline=False)
             if data.get('eta') and data.get('eta') != 'N/A':
                 e.add_field(name='Estimated Arrival', value=data.get('eta'), inline=False)
