@@ -866,7 +866,7 @@ def setup(bot: commands.Bot):
             e = discord.Embed(title='Order Placed!', url=data.get('tracking'), color=0x00ff00)
 
             if tracking_url:
-                tracking_text = f"Here are your order details:\n**Tracking Link**\n[Click here]({tracking_url})"
+                tracking_text = f"Here are your order details:\n\n**🔗 Tracking Link**\n[Click here]({tracking_url})"
                 e.add_field(name='', value=tracking_text, inline=False)
             
             e.add_field(name='Store', value=data.get('store'), inline=False)
@@ -879,7 +879,7 @@ def setup(bot: commands.Bot):
             e = discord.Embed(title='Checkout Successful!', url=data.get('tracking'), color=0x00ff00)
             
             if tracking_url:
-                tracking_text = f"Here are your order details:\n**Tracking Link**\n[Click here]({tracking_url})"
+                tracking_text = f"Here are your order details:\n\n**🔗 Tracking Link**\n[Click here]({tracking_url})"
                 e.add_field(name='', value=tracking_text, inline=False)
             
             e.add_field(name='Store', value=data.get('store'), inline=False)
