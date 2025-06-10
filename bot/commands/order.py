@@ -377,28 +377,8 @@ def setup(bot: commands.Bot):
         # Normalize the ticket name for matching
         normalized_ticket_name = normalize_name_for_matching(ticket_name)
         
-        # Find matching webhook data using name-only matching
-        data = None
-        matched_key = None
-        
-        # Try exact normalized name match first
-        for (cached_name, cached_addr), cached_data in helpers.ORDER_WEBHOOK_CACHE.items():
-            if normalize_name_for_matching(cached_name) == normalized_ticket_name:
-                data = cached_data
-                matched_key = (cached_name, cached_addr)
-                break
-        
-        # If no exact match, try partial name matching
-        if not data:
-            for (cached_name, cached_addr), cached_data in helpers.ORDER_WEBHOOK_CACHE.items():
-                cached_normalized = normalize_name_for_matching(cached_name)
-                # Check if names contain each other or share significant parts
-                if (normalized_ticket_name in cached_normalized or 
-                    cached_normalized in normalized_ticket_name or
-                    any(part in cached_normalized for part in normalized_ticket_name.split() if len(part) > 2)):
-                    data = cached_data
-                    matched_key = (cached_name, cached_addr)
-                    break
+        # Find the latest matching webhook data
+        data = helpers.find_latest_matching_webhook_data(ticket_name)
         
         if not data:
             # Show debug info about what was found
@@ -406,20 +386,34 @@ def setup(bot: commands.Bot):
             debug_msg = f'❌ No matching webhook found.\n**Ticket name:** `{ticket_name}` → `{normalized_ticket_name}`\n**Cached names:** {", ".join(cache_keys) if cache_keys else "None"}'
             return await interaction.response.send_message(debug_msg, ephemeral=True)
 
-        # Create tracking embed
-        e = discord.Embed(title='Order Placed', url=data.get('tracking'), color=0x00ff00)
-        e.add_field(name='Store', value=data.get('store'), inline=False)
-        e.add_field(name='Estimated Arrival', value=data.get('eta'), inline=False)
-        e.add_field(name='Order Items', value=data.get('items'), inline=False)
-        e.add_field(name='Name', value=data.get('name'), inline=False)
-        e.add_field(name='Delivery Address', value=data.get('address'), inline=False)
-        e.set_footer(text='Watch the tracking link for updates!')
+        # Create tracking embed based on webhook type
+        webhook_type = data.get('type', 'unknown')
+        
+        if webhook_type == 'tracking':
+            e = discord.Embed(title='Order Placed', url=data.get('tracking'), color=0x00ff00)
+            e.add_field(name='Store', value=data.get('store'), inline=False)
+            e.add_field(name='Estimated Arrival', value=data.get('eta'), inline=False)
+            e.add_field(name='Order Items', value=data.get('items'), inline=False)
+            e.add_field(name='Name', value=data.get('name'), inline=False)
+            e.add_field(name='Delivery Address', value=data.get('address'), inline=False)
+            e.set_footer(text='Watch the tracking link for updates!')
+        else:  # checkout or unknown
+            e = discord.Embed(title='Checkout Successful', url=data.get('tracking'), color=0x0099ff)
+            e.add_field(name='Store', value=data.get('store'), inline=False)
+            if data.get('eta') and data.get('eta') != 'N/A':
+                e.add_field(name='Estimated Arrival', value=data.get('eta'), inline=False)
+            if data.get('items'):
+                e.add_field(name='Items Ordered', value=data.get('items'), inline=False)
+            e.add_field(name='Name', value=data.get('name'), inline=False)
+            if data.get('address'):
+                e.add_field(name='Delivery Address', value=data.get('address'), inline=False)
+            if data.get('payment'):
+                e.add_field(name='Account Email', value=data.get('payment'), inline=False)
+            e.set_footer(text=f'Checkout confirmed • Type: {webhook_type}')
 
         await interaction.response.send_message(embed=e)
         
-        # Remove from cache after successful use
-        if matched_key:
-            helpers.ORDER_WEBHOOK_CACHE.pop(matched_key, None)
+        # Don't remove from cache anymore - keep for potential future lookups
 
     @bot.tree.command(name='debug_tracking', description='Debug webhook lookup')
     async def debug_tracking(

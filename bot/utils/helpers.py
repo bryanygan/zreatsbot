@@ -4,6 +4,12 @@ from typing import Optional
 
 OWNER_ID = int(os.getenv('OWNER_ID')) if os.getenv('OWNER_ID') else None
 
+# cache for parsed webhook orders keimport os
+import discord
+from typing import Optional
+
+OWNER_ID = int(os.getenv('OWNER_ID')) if os.getenv('OWNER_ID') else None
+
 # cache for parsed webhook orders keyed by (name, address)
 ORDER_WEBHOOK_CACHE = {}
 
@@ -112,19 +118,138 @@ def parse_fields(embed: discord.Embed) -> dict:
     }
 
 def parse_webhook_fields(embed: discord.Embed) -> dict:
-    """Parse fields from webhook order embeds"""
+    """Parse fields from webhook order embeds (both tracking and checkout types)"""
     data = {field.name: field.value for field in embed.fields}
     tracking_url = getattr(embed, "url", None) or getattr(getattr(embed, "author", None), "url", "")
-    return {
-        'store': data.get('Store', '').strip(),
-        'eta': data.get('Estimated Arrival', '').strip(),
-        'name': data.get('Name', '').strip(),
-        'address': data.get('Delivery Address', '').strip(),
-        'items': data.get('Order Items', '').strip(),
-        'tracking': tracking_url.strip() if tracking_url else '',
-        'phone': data.get('Phone', '').strip(),
-        'payment': data.get('Payment', '').strip(),
-    }
+    
+    # Handle tracking webhook format (Store, Name, Delivery Address)
+    if 'Store' in data and 'Estimated Arrival' in data:
+        return {
+            'store': data.get('Store', '').strip(),
+            'eta': data.get('Estimated Arrival', '').strip(),
+            'name': data.get('Name', '').strip(),
+            'address': data.get('Delivery Address', '').strip(),
+            'items': data.get('Order Items', '').strip(),
+            'tracking': tracking_url.strip() if tracking_url else '',
+            'phone': data.get('Phone', '').strip(),
+            'payment': data.get('Payment', '').strip(),
+            'type': 'tracking'
+        }
+    
+    # Handle checkout webhook format (Account Email, Delivery Information, etc.)
+    elif 'Account Email' in data or 'Delivery Information' in data:
+        # Extract name from Delivery Information
+        delivery_info = data.get('Delivery Information', '')
+        name = ''
+        address = ''
+        
+        if delivery_info:
+            lines = delivery_info.split('\n')
+            for line in lines:
+                line = line.strip()
+                # Look for name patterns
+                if line.startswith('📞 Name:'):
+                    name = line.replace('📞 Name:', '').strip()
+                elif line.startswith('Name:'):
+                    name = line.replace('Name:', '').strip()
+                # Look for address patterns  
+                elif line.startswith('📍 Address L1:'):
+                    address = line.replace('📍 Address L1:', '').strip()
+                elif line.startswith('Address L1:'):
+                    address = line.replace('Address L1:', '').strip()
+        
+        # Extract store from title or description
+        store = embed.title or embed.description or 'Unknown Store'
+        if 'Checkout Successful' in store:
+            # Extract store name from parentheses if present
+            if '(' in store and ')' in store:
+                store = store[store.find('(')+1:store.find(')')].strip()
+            else:
+                store = store.replace('Checkout Successful', '').strip('() ')
+        
+        return {
+            'store': store,
+            'eta': data.get('Arrival', 'N/A').strip() if 'Arrival' in data else 'N/A',
+            'name': name,
+            'address': address,
+            'items': data.get('Items In Bag', '').strip(),
+            'tracking': tracking_url.strip() if tracking_url else '',
+            'phone': data.get('Account Phone', '').strip(),
+            'payment': data.get('Account Email', '').strip(),
+            'type': 'checkout'
+        }
+    
+    # Fallback to original format for compatibility
+    else:
+        return {
+            'store': data.get('Store', '').strip(),
+            'eta': data.get('Estimated Arrival', '').strip(),
+            'name': data.get('Name', '').strip(),
+            'address': data.get('Delivery Address', '').strip(),
+            'items': data.get('Order Items', '').strip(),
+            'tracking': tracking_url.strip() if tracking_url else '',
+            'phone': data.get('Phone', '').strip(),
+            'payment': data.get('Payment', '').strip(),
+            'type': 'unknown'
+        }
+
+def find_latest_matching_webhook_data(name: str, address: str = '') -> dict:
+    """Find the most recent matching webhook data using flexible name matching"""
+    normalized_name = normalize_name_for_matching(name)
+    normalized_address = address.lower().strip() if address else ''
+    
+    matches = []
+    
+    # Collect all matching webhooks with their cache keys
+    for (cached_name, cached_addr), data in ORDER_WEBHOOK_CACHE.items():
+        cached_normalized = normalize_name_for_matching(cached_name)
+        
+        # Try different matching strategies
+        is_match = False
+        match_type = ""
+        
+        # Exact name + address match
+        if cached_normalized == normalized_name and cached_addr == normalized_address:
+            is_match = True
+            match_type = "exact"
+        # Exact name match (ignore address)
+        elif cached_normalized == normalized_name:
+            is_match = True
+            match_type = "name_exact"
+        # Partial name matching
+        elif (normalized_name in cached_normalized or 
+              cached_normalized in normalized_name or
+              any(part in cached_normalized for part in normalized_name.split() if len(part) > 2)):
+            is_match = True
+            match_type = "name_partial"
+        
+        if is_match:
+            matches.append({
+                'data': data,
+                'cache_key': (cached_name, cached_addr),
+                'match_type': match_type
+            })
+    
+    if not matches:
+        return None
+    
+    # Sort by match quality (exact > name_exact > name_partial) and then by recency
+    # Since ORDER_WEBHOOK_CACHE is ordered by insertion, later entries are more recent
+    cache_keys = list(ORDER_WEBHOOK_CACHE.keys())
+    
+    def match_score(match):
+        type_scores = {"exact": 3, "name_exact": 2, "name_partial": 1}
+        type_score = type_scores.get(match['match_type'], 0)
+        # Get position in cache (later = higher score for recency)
+        try:
+            recency_score = cache_keys.index(match['cache_key'])
+        except ValueError:
+            recency_score = 0
+        return (type_score, recency_score)
+    
+    # Get the best match (highest score)
+    best_match = max(matches, key=match_score)
+    return best_match['data']
 
 def parse_webhook_order(embed: discord.Embed) -> dict:
     """Legacy function - use parse_webhook_fields instead"""

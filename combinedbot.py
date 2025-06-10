@@ -194,15 +194,29 @@ def main():
             for embed in message.embeds:
                 # Check if this looks like an order confirmation embed
                 field_names = {f.name for f in embed.fields}
-                if {"Store", "Name", "Delivery Address"}.issubset(field_names):
+                
+                # Check for tracking webhook (Store, Name, Delivery Address)
+                is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
+                
+                # Check for checkout webhook (Account Email, Delivery Information, etc.)
+                is_checkout = ("Account Email" in field_names or 
+                             "Delivery Information" in field_names or
+                             (embed.title and "Checkout Successful" in embed.title))
+                
+                if is_tracking or is_checkout:
                     data = helpers.parse_webhook_fields(embed)
                     name = helpers.normalize_name_for_matching(data.get('name', ''))
                     addr = data.get('address', '').lower().strip()
                     
                     if name:  # Only cache if we have a valid name
                         # Store with normalized name for better matching
-                        helpers.ORDER_WEBHOOK_CACHE[(name, addr)] = data
-                        print(f"📦 Cached webhook order: {name} | {addr} at {data.get('store', 'Unknown Store')}")
+                        # Use a timestamp-based key to preserve order (latest wins)
+                        import time
+                        cache_key = (name, addr)
+                        helpers.ORDER_WEBHOOK_CACHE[cache_key] = data
+                        webhook_type = data.get('type', 'unknown')
+                        store = data.get('store', 'Unknown')
+                        print(f"📦 Cached {webhook_type} webhook: {name} | {addr} at {store}")
 
         await bot.process_commands(message)
 
