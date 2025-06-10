@@ -553,9 +553,14 @@ def setup(bot: commands.Bot):
                         is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
                         
                         # Check for checkout webhook (Account Email, Delivery Information, etc.)
-                        is_checkout = ("Account Email" in field_names or 
-                                     "Delivery Information" in field_names or
-                                     (embed.title and "Checkout Successful" in embed.title))
+                        is_checkout = (
+                            "Account Email" in field_names or 
+                            "Delivery Information" in field_names or
+                            "Items In Bag" in field_names or
+                            (embed.title and "Checkout Successful" in embed.title) or
+                            (embed.description and "Checkout Successful" in embed.description) or
+                            ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"]))
+                        )
                         
                         if is_tracking or is_checkout:
                             found_webhooks += 1
@@ -704,10 +709,14 @@ def setup(bot: commands.Bot):
                         
                         # Test if this could be a webhook we care about
                         is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
-                        is_checkout = ("Account Email" in field_names or 
-                                     "Delivery Information" in field_names or
-                                     "Items In Bag" in field_names or
-                                     (embed.title and "Checkout Successful" in embed.title))
+                        is_checkout = (
+                            "Account Email" in field_names or 
+                            "Delivery Information" in field_names or
+                            "Items In Bag" in field_names or
+                            (embed.title and "Checkout Successful" in embed.title) or
+                            (embed.description and "Checkout Successful" in embed.description) or
+                            any("Store" in name and "Account" in str(field_names) for name in field_names)
+                        )
                         
                         if is_tracking or is_checkout:
                             # Parse the webhook

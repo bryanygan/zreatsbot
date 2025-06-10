@@ -137,53 +137,45 @@ def parse_webhook_fields(embed: discord.Embed) -> dict:
         }
     
     # Handle checkout webhook format (rich text with **bold** and ╰・ formatting)
-    elif 'Account Email' in data or 'Delivery Information' in data or 'Items In Bag' in data:
+    elif ('Account Email' in data or 'Delivery Information' in data or 'Items In Bag' in data or
+          ('Store' in data and any(x in data for x in ['Account Email', 'Account Phone', 'Delivery Information', 'Items In Bag']))):
+        
         # Extract name from Delivery Information
         delivery_info = data.get('Delivery Information', '')
         name = ''
         address = ''
         
         if delivery_info:
-            # Handle rich text format like: ╰・**Name**: Bryan Gan╰・**Address L1**: Barnes & Noble...
+            # Handle rich text format like: ╰・Name: Bryan Gan
             import re
             
             # Extract name using regex to handle the formatting
-            name_match = re.search(r'(?:╰・)?(?:\*\*)?Name(?:\*\*)?[:\s]+([^╰\n]+)', delivery_info, re.IGNORECASE)
+            name_match = re.search(r'(?:╰・)?(?:\*\*)?Name(?:\*\*)?[:\s]+([^╰\n*]+)', delivery_info, re.IGNORECASE)
             if name_match:
                 name = name_match.group(1).strip()
             
             # Extract address using regex
-            addr_match = re.search(r'(?:╰・)?(?:\*\*)?Address L1(?:\*\*)?[:\s]+([^╰\n]+)', delivery_info, re.IGNORECASE)
+            addr_match = re.search(r'(?:╰・)?(?:\*\*)?Address L1(?:\*\*)?[:\s]+([^╰\n*]+)', delivery_info, re.IGNORECASE)
             if addr_match:
                 address = addr_match.group(1).strip()
         
-        # Extract store from title or embed description - handle rich text
-        store_text = embed.title or embed.description or ''
-        store = 'Unknown Store'
+        # Extract store from Store field or title/description
+        store = data.get('Store', '').strip()
+        if not store:
+            store_text = embed.title or embed.description or ''
+            if store_text:
+                # Handle formats like "🎉 Checkout Successful (ubereats)"
+                import re
+                paren_match = re.search(r'Checkout Successful[^(]*\(([^)]+)\)', store_text)
+                if paren_match:
+                    store = paren_match.group(1).strip()
+                else:
+                    store = 'Unknown Store'
         
-        if store_text:
-            # Handle formats like "🎉 Checkout Successful (ubereats)" or "**Store**: Ratchada Thai..."
-            import re
-            
-            # Try to extract from title with parentheses
-            paren_match = re.search(r'Checkout Successful[^(]*\(([^)]+)\)', store_text)
-            if paren_match:
-                store = paren_match.group(1).strip()
-            else:
-                # Try to extract from **Store**: format in description
-                store_match = re.search(r'(?:\*\*)?Store(?:\*\*)?[:\s]+([^*\n]+)', store_text)
-                if store_match:
-                    store = store_match.group(1).strip()
-                    # Clean up any remaining formatting
-                    store = re.sub(r'\*\*', '', store).strip()
-        
-        # Extract arrival time
+        # Extract arrival time from Arrival field or parse from text
         eta = 'N/A'
-        if store_text:
-            arrival_match = re.search(r'(?:\*\*)?Arrival(?:\*\*)?[:\s]+([^*\n]+)', store_text)
-            if arrival_match:
-                eta = arrival_match.group(1).strip()
-                eta = re.sub(r'\*\*', '', eta).strip()
+        if 'Arrival' in data:
+            eta = data.get('Arrival', '').strip()
         
         return {
             'store': store,
