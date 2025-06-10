@@ -9,9 +9,14 @@ ORDER_CHANNEL_MENTION = os.getenv('ORDER_CHANNEL_MENTION', '<#135093533726998533
 
 rename_history = deque()
 
-async def change_channel_status(channel: discord.TextChannel, status: str):
-    """Rename the channel and send open/close announcements."""
-    new_name = "open🟢🟢" if status == "open" else "closed🔴🔴"
+async def change_channel_status(channel: discord.TextChannel, status: str, silent: bool = False):
+    """Rename the channel and send open/close/break announcements."""
+    if status == "open":
+        new_name = "open🟢🟢"
+    elif status == "break":
+        new_name = "on-hold🟡🟡"
+    else:  # close
+        new_name = "closed🔴🔴"
 
     now = time.monotonic()
     while rename_history and now - rename_history[0] > 600:
@@ -25,7 +30,10 @@ async def change_channel_status(channel: discord.TextChannel, status: str):
         rename_history.append(now)
 
         if status == "open":
-            await channel.send(f"ZR Eats is now OPEN! <@&{ROLE_PING_ID}>")
+            # Only send role ping if not in silent mode
+            if not silent:
+                await channel.send(f"ZR Eats is now OPEN! <@&{ROLE_PING_ID}>")
+            
             embed = discord.Embed(
                 title="ZR Eats is now OPEN!",
                 description=(
@@ -34,7 +42,14 @@ async def change_channel_status(channel: discord.TextChannel, status: str):
                 ),
             )
             await channel.send(embed=embed)
-        else:
+        elif status == "break":
+            embed = discord.Embed(
+                title="ZR Eats is now on hold!",
+                description="Please wait until a Chef is available to take new orders!",
+            )
+            embed.set_footer(text="Do not open a ticket during this time, you will not get a response.")
+            await channel.send(embed=embed)
+        else:  # close
             embed = discord.Embed(
                 title="ZR Eats is now CLOSED.",
                 description=(
