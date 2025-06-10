@@ -184,13 +184,23 @@ def parse_webhook_fields(embed: discord.Embed) -> dict:
         if phone_match:
             phone = phone_match.group(1).strip()
         
+        # Extract tracking URL from the embed URL or description
+        tracking = tracking_url.strip() if tracking_url else ''
+        
+        # If no tracking URL from embed.url, try to extract from description
+        if not tracking and description:
+            # Look for tracking URL patterns in the description
+            tracking_match = re.search(r'https://(?:www\.)?ubereats\.com/orders/[a-zA-Z0-9-]+', description)
+            if tracking_match:
+                tracking = tracking_match.group(0)
+        
         return {
             'store': store,
             'eta': eta,
             'name': name,
             'address': address,
             'items': items,
-            'tracking': tracking_url.strip() if tracking_url else '',
+            'tracking': tracking,
             'phone': phone,
             'payment': email,
             'type': 'checkout'
