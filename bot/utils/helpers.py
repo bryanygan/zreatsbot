@@ -7,12 +7,26 @@ OWNER_ID = int(os.getenv('OWNER_ID')) if os.getenv('OWNER_ID') else None
 # cache for parsed webhook orders keyed by (name, address)
 ORDER_WEBHOOK_CACHE = {}
 
-async def fetch_order_embed(channel: discord.TextChannel) -> Optional[discord.Embed]:
+async def fetch_order_embed(
+    channel: discord.TextChannel, search_limit: int = 25
+) -> Optional[discord.Embed]:
+    """Fetch the most recent order embed in the provided channel.
+
+    The original implementation only looked at the very first message in the
+    channel. When other messages appear before the order embed, this fails.
+    This revised version scans recent history (newest first) and returns the
+    first embed that contains the expected order fields.
+    """
+
     try:
-        msgs = [msg async for msg in channel.history(limit=1, oldest_first=True)]
-        if not msgs or len(msgs[0].embeds) < 2:
-            return None
-        return msgs[0].embeds[1]
+        async for msg in channel.history(limit=search_limit, oldest_first=False):
+            if len(msg.embeds) < 2:
+                continue
+            embed = msg.embeds[1]
+            field_names = {f.name for f in embed.fields}
+            if {"Group Cart Link", "Name"}.issubset(field_names):
+                return embed
+        return None
     except Exception:
         return None
 

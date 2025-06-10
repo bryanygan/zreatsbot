@@ -378,3 +378,58 @@ def setup(bot: commands.Bot):
         await interaction.response.send_message(embed=e)
         helpers.ORDER_WEBHOOK_CACHE.pop((name, addr), None)
 
+    @bot.tree.command(name='debug_tracking', description='Debug webhook lookup')
+    async def debug_tracking(
+        interaction: discord.Interaction, search_limit: int = 50
+    ):
+        """Display information about the most recent order embed and cache.
+
+        Any errors encountered will also be sent to channel ``1350935337475510297``
+        so they can be reviewed later.
+        """
+
+        if not owner_only(interaction):
+            return await interaction.response.send_message(
+                '❌ You are not authorized.', ephemeral=True
+            )
+
+        debug_channel = interaction.guild.get_channel(1350935337475510297)
+        tracking_channel = interaction.guild.get_channel(1352067371006693499)
+
+        if tracking_channel is None:
+            msg = '❌ Tracking channel not found.'
+            if debug_channel:
+                await debug_channel.send(msg)
+            return await interaction.response.send_message(msg, ephemeral=True)
+
+        embed = await fetch_order_embed(tracking_channel, search_limit=search_limit)
+        if embed is None:
+            msg = '❌ Could not locate order embed.'
+            if debug_channel:
+                await debug_channel.send(msg)
+            return await interaction.response.send_message(msg, ephemeral=True)
+
+        info = parse_fields(embed)
+        name = info.get('name', '').lower()
+        addr = info.get('address', info.get('addr2', '')).lower()
+        data = helpers.ORDER_WEBHOOK_CACHE.get((name, addr))
+
+        status_msg = (
+            f'✅ Cache hit for `{name} | {addr}`.'
+            if data
+            else f'❌ No matching webhook found for `{name} | {addr}`.'
+        )
+        if debug_channel:
+            await debug_channel.send(status_msg)
+
+        debug = discord.Embed(title='Tracking Debug', color=0xFFFF00)
+        debug.add_field(name='Lookup Key', value=f'{name} | {addr}', inline=False)
+        debug.add_field(name='Cache Hit', value='Yes' if data else 'No', inline=False)
+        if not data:
+            keys = [f'{k[0]} | {k[1]}' for k in helpers.ORDER_WEBHOOK_CACHE.keys()]
+            debug.add_field(
+                name='Cache Keys', value='; '.join(keys) or 'None', inline=False
+            )
+
+        await interaction.response.send_message(embed=debug, ephemeral=True)
+
