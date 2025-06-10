@@ -5,12 +5,6 @@ from datetime import datetime
 
 OWNER_ID = int(os.getenv('OWNER_ID')) if os.getenv('OWNER_ID') else None
 
-# cache for parsed webhook orders keimport os
-import discord
-from typing import Optional
-
-OWNER_ID = int(os.getenv('OWNER_ID')) if os.getenv('OWNER_ID') else None
-
 # cache for parsed webhook orders keyed by (name, address)
 ORDER_WEBHOOK_CACHE = {}
 
@@ -276,33 +270,35 @@ def parse_webhook_fields(embed: discord.Embed) -> dict:
 
 def find_latest_matching_webhook_data(name: str, address: str = '') -> dict:
     """Find the most recent matching webhook data using flexible name matching"""
-    normalized_name = normalize_name_for_matching(name)
+    # Generate multiple normalized variations of the input name
+    name_variations = generate_name_variations(name)
     normalized_address = address.lower().strip() if address else ''
     
     matches = []
     
     # Collect all matching webhooks with their timestamps
     for (cached_name, cached_addr), cache_entry in ORDER_WEBHOOK_CACHE.items():
-        cached_normalized = normalize_name_for_matching(cached_name)
+        cached_variations = generate_name_variations(cached_name)
         
         # Try different matching strategies
         is_match = False
         match_type = ""
         
-        # Exact name + address match
-        if cached_normalized == normalized_name and cached_addr == normalized_address:
-            is_match = True
-            match_type = "exact"
-        # Exact name match (ignore address)
-        elif cached_normalized == normalized_name:
-            is_match = True
-            match_type = "name_exact"
-        # Partial name matching
-        elif (normalized_name in cached_normalized or 
-              cached_normalized in normalized_name or
-              any(part in cached_normalized for part in normalized_name.split() if len(part) > 2)):
-            is_match = True
-            match_type = "name_partial"
+        # Check if any variation of the input name matches any variation of the cached name
+        for input_var in name_variations:
+            for cached_var in cached_variations:
+                # Exact match
+                if input_var == cached_var:
+                    is_match = True
+                    match_type = "exact"
+                    break
+                # Partial match (one contains the other)
+                elif (input_var in cached_var or cached_var in input_var) and len(input_var) > 2 and len(cached_var) > 2:
+                    is_match = True
+                    match_type = "partial"
+                    break
+            if is_match and match_type == "exact":
+                break
         
         if is_match:
             matches.append({
@@ -318,7 +314,7 @@ def find_latest_matching_webhook_data(name: str, address: str = '') -> dict:
     
     # Sort by match quality first, then by recency (most recent first)
     def match_score(match):
-        type_scores = {"exact": 3, "name_exact": 2, "name_partial": 1}
+        type_scores = {"exact": 3, "partial": 1}
         type_score = type_scores.get(match['match_type'], 0)
         # Use timestamp for recency (newer = higher score)
         timestamp_score = match['timestamp'].timestamp()
@@ -327,6 +323,52 @@ def find_latest_matching_webhook_data(name: str, address: str = '') -> dict:
     # Get the best match (highest score = best type + most recent)
     best_match = max(matches, key=match_score)
     return best_match['data']
+
+def generate_name_variations(name: str) -> list:
+    """Generate multiple normalized variations of a name to improve matching"""
+    if not name:
+        return ['']
+    
+    variations = set()
+    
+    # Original name, lowercased and stripped
+    base_name = name.lower().strip()
+    variations.add(base_name)
+    
+    # Remove commas and normalize spacing
+    no_comma = base_name.replace(',', ' ')
+    # Normalize multiple spaces to single space
+    no_comma = ' '.join(no_comma.split())
+    variations.add(no_comma)
+    
+    # Remove commas completely (no space replacement)
+    no_comma_nospace = base_name.replace(',', '')
+    no_comma_nospace = ' '.join(no_comma_nospace.split())
+    variations.add(no_comma_nospace)
+    
+    # Split into parts and take first two meaningful parts
+    parts = [p.strip() for p in no_comma.split() if p.strip()]
+    
+    if len(parts) >= 2:
+        # First two parts
+        two_parts = f"{parts[0]} {parts[1]}"
+        variations.add(two_parts)
+        
+        # Reversed order (last first)
+        reversed_parts = f"{parts[1]} {parts[0]}"
+        variations.add(reversed_parts)
+        
+        # Just first part + first letter of second
+        first_plus_initial = f"{parts[0]} {parts[1][0]}" if len(parts[1]) > 0 else parts[0]
+        variations.add(first_plus_initial)
+    elif len(parts) == 1:
+        # Single word variations
+        single = parts[0]
+        variations.add(single)
+        variations.add(f"{single} {single[0]}" if len(single) > 0 else single)
+    
+    # Remove empty strings and return as list
+    return [v for v in variations if v.strip()]
 
 def parse_webhook_order(embed: discord.Embed) -> dict:
     """Legacy function - use parse_webhook_fields instead"""
@@ -350,11 +392,11 @@ def normalize_name_for_matching(name: str) -> str:
     if not name:
         return ''
     
-    # Remove common suffixes and prefixes, normalize case and spacing
+    # This function is now mainly used for the primary cache key
+    # Most matching logic is handled by generate_name_variations
     cleaned = name.lower().strip()
-    
-    # Remove common words that might vary
     cleaned = cleaned.replace(',', ' ')
+    cleaned = ' '.join(cleaned.split())  # Normalize whitespace
     
     # Split into parts and take first two meaningful parts
     parts = [p.strip() for p in cleaned.split() if p.strip()]
@@ -432,4 +474,3 @@ def cache_webhook_data(data: dict, message_timestamp: datetime = None, message_i
         'message_id': message_id
     }
     return True
-

@@ -849,14 +849,79 @@ def setup(bot: commands.Bot):
         # Normalize the ticket name for matching
         normalized_ticket_name = normalize_name_for_matching(ticket_name)
         
-        # Find the latest matching webhook data
-        data = helpers.find_latest_matching_webhook_data(ticket_name)
+        # Always scan for the latest webhooks to ensure we have fresh data
+        await interaction.response.send_message('🔍 Scanning for latest webhooks...', ephemeral=True)
         
-        if not data:
-            # Show debug info about what was found
-            cache_keys = [normalize_name_for_matching(k[0]) for k in helpers.ORDER_WEBHOOK_CACHE.keys()]
-            debug_msg = f'❌ No matching webhook found.\n**Ticket name:** `{ticket_name}` → `{normalized_ticket_name}`\n**Cached names:** {", ".join(cache_keys) if cache_keys else "None"}'
-            return await interaction.response.send_message(debug_msg, ephemeral=True)
+        # Get the default tracking channel
+        tracking_channel = interaction.guild.get_channel(1352067371006693499)  # Default tracking channel ID
+        
+        if not tracking_channel:
+            return await interaction.followup.send('❌ Could not access tracking channel for scanning.', ephemeral=True)
+        
+        # Scan recent messages for webhooks (last 100 messages should be enough for recent orders)
+        scan_limit = 100
+        found_webhooks = 0
+        cached_webhooks = 0
+        updated_webhooks = 0
+        
+        try:
+            async for message in tracking_channel.history(limit=scan_limit):
+                if message.webhook_id and message.embeds:
+                    for embed in message.embeds:
+                        field_names = {f.name for f in embed.fields}
+                        
+                        # Check for tracking webhook (Store, Name, Delivery Address)
+                        is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
+                        
+                        # Check for checkout webhook - comprehensive detection
+                        is_checkout = (
+                            "Account Email" in field_names or 
+                            "Delivery Information" in field_names or
+                            "Items In Bag" in field_names or
+                            (embed.title and "Checkout Successful" in embed.title) or
+                            (embed.description and "Checkout Successful" in embed.description) or
+                            ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
+                            # Description-based checkout webhooks (like stewardess)
+                            (len(embed.fields) == 0 and embed.description and 
+                            any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
+                        )
+                        
+                        if is_tracking or is_checkout:
+                            found_webhooks += 1
+                            
+                            try:
+                                webhook_data = helpers.parse_webhook_fields(embed)
+                                
+                                # Cache with message timestamp for proper ordering
+                                success = helpers.cache_webhook_data(
+                                    webhook_data, 
+                                    message_timestamp=message.created_at,
+                                    message_id=message.id
+                                )
+                                
+                                if success:
+                                    cached_webhooks += 1
+                                else:
+                                    updated_webhooks += 1
+                            except Exception as e:
+                                continue
+            
+            # Find the latest matching webhook data after scanning
+            data = helpers.find_latest_matching_webhook_data(ticket_name)
+            
+            if data:
+                await interaction.followup.send(f'✅ Found matching webhook! Scanned {scan_limit} messages, found {found_webhooks} webhooks ({cached_webhooks} new, {updated_webhooks} existing).', ephemeral=True)
+            else:
+                # No match - show detailed debug info
+                cache_keys = []
+                for (cached_name, cached_addr), cache_entry in helpers.ORDER_WEBHOOK_CACHE.items():
+                    cache_keys.append(cached_name)
+                
+                debug_msg = f'❌ No matching webhook found after scanning.\n**Ticket name:** `{ticket_name}` → `{normalized_ticket_name}`\n**Scanned:** {scan_limit} messages, found {found_webhooks} webhooks ({cached_webhooks} new, {updated_webhooks} existing)\n**All cached names:** {", ".join(cache_keys[:15])}{"..." if len(cache_keys) > 15 else ""}'
+                return await interaction.followup.send(debug_msg, ephemeral=True)
+                
+        except Exception as e:
+            return await interaction.followup.send(f'❌ Error scanning webhooks: {str(e)}', ephemeral=True)
 
         # Create tracking embed based on webhook type
         webhook_type = data.get('type', 'unknown')
@@ -892,10 +957,9 @@ def setup(bot: commands.Bot):
                 e.add_field(name='Delivery Address', value=data.get('address'), inline=False)
             e.set_footer(text='Watch the tracking link for updates!')
 
-        await interaction.response.send_message(embed=e)
-        
-        # Don't remove from cache anymore - keep for potential future lookups
+        await interaction.followup.send(embed=e)
 
+        
     @bot.tree.command(name='debug_tracking', description='Debug webhook lookup')
     async def debug_tracking(
         interaction: discord.Interaction, search_limit: int = 50
