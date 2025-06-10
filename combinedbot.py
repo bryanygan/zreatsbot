@@ -208,7 +208,7 @@ def main():
                     ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
                     # New check for description-based checkout webhooks
                     (len(embed.fields) == 0 and embed.description and 
-                     any(x in embed.description for x in ['Store:', 'Account Email:', 'Delivery Information:', 'Items In Bag:']))
+                     any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
                 )
                 
                 if is_tracking or is_checkout:

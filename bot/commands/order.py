@@ -641,12 +641,12 @@ def setup(bot: commands.Bot):
                 # New description-based detection
                 'zero_fields': len(embed.fields) == 0,
                 'has_description': bool(embed.description),
-                'store_in_desc': embed.description and 'Store:' in embed.description,
-                'account_email_in_desc': embed.description and 'Account Email:' in embed.description,
-                'delivery_info_in_desc': embed.description and 'Delivery Information:' in embed.description,
-                'items_in_bag_in_desc': embed.description and 'Items In Bag:' in embed.description,
+                'store_in_desc': embed.description and '**Store**:' in embed.description,
+                'account_email_in_desc': embed.description and '**Account Email**:' in embed.description,
+                'delivery_info_in_desc': embed.description and '**Delivery Information**:' in embed.description,
+                'items_in_bag_in_desc': embed.description and '**Items In Bag**:' in embed.description,
                 'desc_based_checkout': (len(embed.fields) == 0 and embed.description and 
-                                       any(x in embed.description for x in ['Store:', 'Account Email:', 'Delivery Information:', 'Items In Bag:']))
+                                       any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
             }
             
             # Calculate final checkout detection
@@ -1034,7 +1034,7 @@ def setup(bot: commands.Bot):
                             ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
                             # New check for description-based checkout webhooks
                             (len(embed.fields) == 0 and embed.description and 
-                             any(x in embed.description for x in ['Store:', 'Account Email:', 'Delivery Information:', 'Items In Bag:']))
+                             any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
                         )
                         
                         if is_tracking or is_checkout:

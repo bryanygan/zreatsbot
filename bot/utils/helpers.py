@@ -138,8 +138,8 @@ def parse_webhook_fields(embed: discord.Embed) -> dict:
     
     # Handle checkout webhook format - check if it's in description instead of fields
     elif (len(embed.fields) == 0 and embed.description and 
-          ('Store:' in embed.description or 'Account Email:' in embed.description or 
-           'Delivery Information:' in embed.description or 'Items In Bag:' in embed.description)):
+          ('**Store**:' in embed.description or '**Account Email**:' in embed.description or 
+           '**Delivery Information**:' in embed.description or '**Items In Bag**:' in embed.description)):
         
         description = embed.description
         import re
