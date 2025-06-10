@@ -525,7 +525,89 @@ def setup(bot: commands.Bot):
         if debug_channel:
             await debug_channel.send(status_msg)
 
-        await interaction.response.send_message(embed=debug, ephemeral=True)
+    @bot.tree.command(name='scan_webhooks', description='Scan tracking channel for webhook orders')
+    async def scan_webhooks(interaction: discord.Interaction, channel_id: str = None, search_limit: int = 50):
+        """Manually scan a channel for webhook order confirmations and cache them"""
+        
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+        
+        # Default to tracking channel if no channel specified
+        if channel_id:
+            try:
+                target_channel = interaction.guild.get_channel(int(channel_id))
+            except ValueError:
+                return await interaction.response.send_message('❌ Invalid channel ID.', ephemeral=True)
+        else:
+            target_channel = interaction.guild.get_channel(1352067371006693499)  # Default tracking channel
+        
+        if not target_channel:
+            return await interaction.response.send_message('❌ Channel not found.', ephemeral=True)
+        
+        found_webhooks = 0
+        cached_webhooks = 0
+        
+        try:
+            async for message in target_channel.history(limit=search_limit):
+                if message.webhook_id and message.embeds:
+                    for embed in message.embeds:
+                        field_names = {f.name for f in embed.fields}
+                        if {"Store", "Name", "Delivery Address"}.issubset(field_names):
+                            found_webhooks += 1
+                            data = helpers.parse_webhook_fields(embed)
+                            name = helpers.normalize_name_for_matching(data.get('name', ''))
+                            addr = data.get('address', '').lower().strip()
+                            
+                            if name:  # Only cache if we have a valid name
+                                cache_key = (name, addr)
+                                if cache_key not in helpers.ORDER_WEBHOOK_CACHE:
+                                    helpers.ORDER_WEBHOOK_CACHE[cache_key] = data
+                                    cached_webhooks += 1
+        except Exception as e:
+            return await interaction.response.send_message(f'❌ Error scanning channel: {str(e)}', ephemeral=True)
+        
+        embed = discord.Embed(title='Webhook Scan Results', color=0x00FF00)
+        embed.add_field(name='Channel Scanned', value=target_channel.mention, inline=False)
+        embed.add_field(name='Messages Searched', value=str(search_limit), inline=False)
+        embed.add_field(name='Webhook Orders Found', value=str(found_webhooks), inline=False)
+        embed.add_field(name='New Entries Cached', value=str(cached_webhooks), inline=False)
+        embed.add_field(name='Total Cache Size', value=str(len(helpers.ORDER_WEBHOOK_CACHE)), inline=False)
+        
+        if helpers.ORDER_WEBHOOK_CACHE:
+            recent_names = []
+            for (name, addr), data in list(helpers.ORDER_WEBHOOK_CACHE.items())[-5:]:
+                store = data.get('store', 'Unknown')
+                recent_names.append(f"{name} ({store})")
+            embed.add_field(name='Recent Cached Names', value='\n'.join(recent_names), inline=False)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name='check_cache', description='Show current webhook cache contents')
+    async def check_cache(interaction: discord.Interaction):
+        """Show what's currently in the webhook cache"""
+        
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+        
+        if not helpers.ORDER_WEBHOOK_CACHE:
+            return await interaction.response.send_message('📭 Webhook cache is empty.', ephemeral=True)
+        
+        embed = discord.Embed(title='Webhook Cache Contents', color=0x0099FF)
+        embed.add_field(name='Total Entries', value=str(len(helpers.ORDER_WEBHOOK_CACHE)), inline=False)
+        
+        cache_entries = []
+        for (name, addr), data in helpers.ORDER_WEBHOOK_CACHE.items():
+            store = data.get('store', 'Unknown')
+            cache_entries.append(f"**{name}** → {store}")
+        
+        # Show up to 10 entries
+        if len(cache_entries) <= 10:
+            embed.add_field(name='All Cached Orders', value='\n'.join(cache_entries), inline=False)
+        else:
+            embed.add_field(name='Recent 10 Cached Orders', value='\n'.join(cache_entries[-10:]), inline=False)
+            embed.add_field(name='Note', value=f'Showing last 10 of {len(cache_entries)} total entries', inline=False)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name='find_ticket', description='Search for ticket embed in channel')
     async def find_ticket(interaction: discord.Interaction, search_limit: int = 100):
