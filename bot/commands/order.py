@@ -687,4 +687,61 @@ def setup(bot: commands.Bot):
                 inline=False
             )
         
-        await interaction.response.send_message(embed=debug, ephemeral=True)
+    @bot.tree.command(name='test_webhook_parsing', description='Test webhook parsing on recent messages')
+    async def test_webhook_parsing(interaction: discord.Interaction, search_limit: int = 10):
+        """Test webhook parsing to see what data is extracted"""
+        
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+        
+        results = []
+        
+        try:
+            async for message in interaction.channel.history(limit=search_limit):
+                if message.webhook_id and message.embeds:
+                    for i, embed in enumerate(message.embeds):
+                        field_names = [f.name for f in embed.fields]
+                        
+                        # Test if this could be a webhook we care about
+                        is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
+                        is_checkout = ("Account Email" in field_names or 
+                                     "Delivery Information" in field_names or
+                                     "Items In Bag" in field_names or
+                                     (embed.title and "Checkout Successful" in embed.title))
+                        
+                        if is_tracking or is_checkout:
+                            # Parse the webhook
+                            parsed_data = helpers.parse_webhook_fields(embed)
+                            
+                            results.append({
+                                'message_id': message.id,
+                                'embed_index': i,
+                                'title': embed.title or 'No Title',
+                                'description': (embed.description or '')[:100] + ('...' if embed.description and len(embed.description) > 100 else ''),
+                                'field_names': field_names,
+                                'parsed_name': parsed_data.get('name', 'None'),
+                                'parsed_store': parsed_data.get('store', 'None'),
+                                'parsed_type': parsed_data.get('type', 'None'),
+                                'parsed_address': parsed_data.get('address', 'None')[:50] + ('...' if parsed_data.get('address', '') and len(parsed_data.get('address', '')) > 50 else '')
+                            })
+        except Exception as e:
+            return await interaction.response.send_message(f'❌ Error testing parsing: {str(e)}', ephemeral=True)
+        
+        if not results:
+            return await interaction.response.send_message('📭 No webhook embeds found in recent messages.', ephemeral=True)
+        
+        embed = discord.Embed(title='Webhook Parsing Test Results', color=0xFFAA00)
+        embed.add_field(name='Messages Searched', value=str(search_limit), inline=False)
+        embed.add_field(name='Webhook Embeds Found', value=str(len(results)), inline=False)
+        
+        for i, result in enumerate(results[:3], 1):  # Show first 3 results
+            embed.add_field(
+                name=f'Webhook {i}: {result["title"]}',
+                value=f'**Type**: {result["parsed_type"]}\n**Name**: {result["parsed_name"]}\n**Store**: {result["parsed_store"]}\n**Address**: {result["parsed_address"]}\n**Fields**: {", ".join(result["field_names"][:3])}...',
+                inline=False
+            )
+        
+        if len(results) > 3:
+            embed.add_field(name='Note', value=f'Showing first 3 of {len(results)} results', inline=False)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
