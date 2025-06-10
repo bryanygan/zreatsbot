@@ -1,8 +1,10 @@
 # Combined Discord Bot
 
-A unified Discord bot that combines two essential functionalities:
+A unified Discord bot that combines multiple essential functionalities:
 1. **Order Command Generation** - Creates formatted commands for Fusion Assist, Fusion Order, and Wool Order with card/email pool management
-2. **Channel Management** - Opens/closes channels with rate limiting and announcements
+2. **Channel Management** - Opens/closes channels with rate limiting and announcements  
+3. **Webhook Order Tracking** - Automatically detects and caches order confirmations from delivery service webhooks
+4. **Advanced Debugging Tools** - Comprehensive debugging commands for troubleshooting webhook detection and embed parsing
 
 ## Features
 
@@ -15,17 +17,30 @@ A unified Discord bot that combines two essential functionalities:
 - **Card & Email pools** with SQLite storage
 - **Comprehensive logging** to JSON, CSV, and TXT files
 - **Custom card/email support** - Use your own cards/emails without touching the pool
+- **Intelligent webhook caching** - Automatically detects and caches order confirmations from multiple webhook formats
+
+### Advanced Webhook Detection
+- **Automatic webhook processing** - Detects tracking and checkout webhooks in real-time
+- **Multiple webhook formats supported**:
+  - Traditional field-based webhooks (Store, Name, Delivery Address)
+  - Checkout webhooks (Account Email, Delivery Information, Items In Bag)  
+  - Description-based webhooks (like Stewardess format with embedded markdown)
+- **Smart name matching** - Flexible matching system with multiple name variations for improved accuracy
+- **Timestamp-based caching** - Only keeps the most recent webhook data for each order
+- **Comprehensive parsing** - Extracts store, name, address, items, tracking URLs, and arrival times
 
 ### Channel Management
 - **`/open`** - Slash command to rename channel to "open🟢🟢" and send announcements
 - **`/close`** - Slash command to rename channel to "closed🔴🔴" and send closure notice
+- **`/break`** - Slash command to put channel "on-hold🟡🟡"
 - **`open`** message - Renames channel to "open🟢🟢" and sends announcements
 - **`close`/`closed`** message - Renames channel to "closed🔴🔴" and sends closure notice
 - **Rate limiting** - Maximum 2 renames per 10 minutes per Discord's limits
 - **Role pinging** and embed announcements
+- **Silent mode** - Use `/open mode:silent` to skip role ping announcements
 
 ### Admin Pool Management (Owner Only)
-- **`/add_card`** - Add single card to pool
+- **`/add_card`** - Add single card to pool with validation
 - **`/add_email`** - Add single email to pool (with priority option)
 - **`/bulk_cards`** - Upload text file with multiple cards
 - **`/bulk_emails`** - Upload text file with multiple emails
@@ -33,12 +48,38 @@ A unified Discord bot that combines two essential functionalities:
 - **`/read_emails`** - View all emails in pool
 - **`/remove_card`** - Remove specific card from pool
 - **`/remove_email`** - Remove specific email from pool
+- **Card validation** - Luhn algorithm validation and CVV format checking
+
+### Webhook & Order Tracking (Owner Only)
+- **`/send_tracking`** - Send order tracking info for current ticket using cached webhook data
+- **`/scan_webhooks`** - Manually scan channels for webhook order confirmations
+- **`/check_cache`** - View current webhook cache contents
+- **`/debug_tracking`** - Debug webhook lookup and ticket matching
+
+### Advanced Debugging Tools (Owner Only)
+- **`/debug_embed_details`** - Show detailed embed structure for debugging webhook detection
+- **`/simple_embed_debug`** - Quick embed analysis without fetching specific messages
+- **`/raw_field_debug`** - Show raw field names and values for troubleshooting
+- **`/check_specific_message`** - Test detection logic on a specific message ID
+- **`/debug_stewardess_webhook`** - Debug specific webhook formats that aren't being detected
+- **`/find_ticket`** - Search for ticket embeds in channel
+- **`/test_webhook_parsing`** - Test webhook parsing on recent messages
+- **`/debug_cache_timestamps`** - Show cache entries with timestamps for debugging recency issues
 
 ### Logging & Analytics (Owner Only)
 - **`/print_logs`** - View recent command logs with email and card tracking
+- **`/full_logs`** - View recent command logs with complete email and command output
 - **`/log_stats`** - View statistics for commands, emails, and cards used
 - **Automatic logging** to multiple formats (JSON, CSV, TXT)
 - **Monthly log rotation** with detailed tracking
+- **Card digit tracking** - Logs digits 9-16 for security while maintaining traceability
+
+### Additional Features
+- **`/payments`** - Display payment methods with interactive buttons
+- **`/wool_details`** - Show parsed Wool order details for verification
+- **Comprehensive error handling** with user-friendly messages
+- **Smart field validation** - Automatically handles N/A and empty fields
+- **Name normalization** - Consistent formatting for commands and matching
 
 ## Prerequisites
 
@@ -105,16 +146,17 @@ pytest
 ## Command Reference
 
 ### For Everyone
-- In opener channel: Use `/open` or `/close` (or type `open`, `close`, `closed`) to manage channel status
+- In opener channel: Use `/open`, `/close`, or `/break` (or type `open`, `close`, `closed`) to manage channel status
 
 ### Admin Only (Owner)
 #### Order Management
 - `/fusion_assist mode:UberEats email:custom@example.com card_number:1234... card_cvv:123` - Generate assist command with custom card/email
 - `/fusion_order custom_email:test@example.com` - Generate order command with custom email
 - `/wool_order` - Generate wool command
+- `/send_tracking` - Send tracking info for current ticket using cached webhook data
 
 #### Pool Management
-- `/add_card number:1234567812345678 cvv:123` - Add single card
+- `/add_card number:1234567812345678 cvv:123` - Add single card with validation
 - `/add_email email:test@example.com top:True` - Add email (optionally to front)
 - `/bulk_cards` - Upload .txt file with cards (format: `cardnum,cvv` per line)
 - `/bulk_emails` - Upload .txt file with emails (one per line)
@@ -123,26 +165,66 @@ pytest
 - `/remove_card number:1234567812345678 cvv:123` - Remove card
 - `/remove_email email:test@example.com` - Remove email
 
+#### Webhook & Tracking Management
+- `/scan_webhooks channel_id:123456789 search_limit:100` - Scan channel for webhook orders
+- `/check_cache` - View current webhook cache contents
+- `/debug_tracking search_limit:50` - Debug webhook lookup for current ticket
+
 #### Logging & Analytics
-- `/print_logs count:50` - Show recent 50 command logs
+- `/print_logs count:50` - Show recent 50 command logs with card digits 9-16
+- `/full_logs count:10` - Show recent logs with complete command output
 - `/log_stats month:202405` - Show stats for May 2024
 - `/log_stats` - Show current month stats
+
+#### Advanced Debugging
+- `/debug_embed_details message_id:123456789 search_limit:10` - Detailed embed analysis
+- `/simple_embed_debug search_limit:15` - Quick embed overview
+- `/raw_field_debug search_limit:5` - Show raw field names and values
+- `/check_specific_message message_id:123456789` - Test detection on specific message
+- `/debug_stewardess_webhook` - Debug stewardess-format webhooks
+- `/find_ticket search_limit:100` - Search for ticket embeds
+- `/test_webhook_parsing search_limit:10` - Test parsing on recent webhooks
+- `/debug_cache_timestamps name_filter:john` - Debug cache with timestamps
+
+#### Utility Commands
+- `/payments` - Display payment method buttons
+- `/wool_details` - Show parsed Wool order details
 
 ## File Structure
 
 ```
 combined-discord-bot/
-├── combinedbot.py        # Main bot file
-├── requirements.txt      # Python dependencies
-├── .env.example         # Sample environment file
-├── .env                 # Environment variables you create
-├── README.md            # This file
-├── data/                # Auto-created databases
-│   └── pool.db          # Cards and emails
-└── logs/                # Auto-created logs
-    ├── commands_202405.json
-    ├── commands_202405.csv
-    └── commands_20240515.txt
+├── combinedbot.py           # Main bot file
+├── db.py                    # Database operations
+├── logging_utils.py         # Comprehensive logging system
+├── requirements.txt         # Python dependencies
+├── .env.example            # Sample environment file
+├── .env                    # Environment variables you create
+├── README.md               # This file
+├── bot/                    # Bot module structure
+│   ├── __init__.py
+│   ├── views.py            # UI components (payment buttons)
+│   ├── commands/           # Command modules
+│   │   ├── __init__.py
+│   │   ├── admin.py        # Pool management commands
+│   │   ├── channel.py      # Channel management commands
+│   │   └── order.py        # Order generation commands
+│   └── utils/              # Utility modules
+│       ├── __init__.py
+│       ├── card_validator.py    # Credit card validation
+│       ├── channel_status.py   # Channel renaming logic
+│       └── helpers.py          # Core helper functions
+├── data/                   # Auto-created databases
+│   └── pool.db            # Cards and emails
+├── logs/                  # Auto-created logs
+│   ├── commands_202405.json
+│   ├── commands_202405.csv
+│   └── commands_20240515.txt
+└── tests/                 # Test suite
+    ├── test_db_connection.py
+    ├── test_format_name_csv.py
+    ├── test_normalize_name.py
+    └── test_parse_webhook_order.py
 ```
 
 ## Bulk File Formats
@@ -178,6 +260,27 @@ All order commands now support custom cards and emails that bypass the pool:
 /fusion_order
 ```
 
+## Webhook Detection & Caching
+
+The bot automatically detects and caches order confirmations from delivery service webhooks:
+
+### Supported Webhook Formats
+1. **Tracking Webhooks** - Traditional format with Store, Name, Delivery Address fields
+2. **Checkout Webhooks** - Rich format with Account Email, Delivery Information, Items In Bag
+3. **Description-based Webhooks** - Stewardess format with markdown embedded in description
+
+### Smart Matching System
+- **Multiple name variations** - Handles different name formats and orderings
+- **Flexible matching** - Partial matches and name component matching
+- **Timestamp priority** - Always uses the most recent webhook data
+- **Address consideration** - Optional address matching for improved accuracy
+
+### Cache Management
+- **Automatic processing** - Webhooks are cached as they arrive
+- **Manual scanning** - Use `/scan_webhooks` to process historical messages
+- **Cache inspection** - Use `/check_cache` to view current cached orders
+- **Debug tools** - Multiple commands for troubleshooting detection issues
+
 ## Configuration Options
 
 ### Required Settings
@@ -204,9 +307,21 @@ The following are hardcoded but can be modified in the source:
 - Alternatively, use custom cards/emails to bypass pools entirely
 
 **"Could not find order embed"**
-- Ensure the ticket bot's first message contains at least 2 embeds
-- The bot looks for the second embed in the first message of the channel
+- Use `/find_ticket` to debug ticket embed detection
+- Ensure the ticket bot's message contains Group Cart Link and Name fields
+- Try `/debug_embed_details` to see what embeds are actually present
 
+**Webhook not being detected**
+- Use `/debug_embed_details` to analyze webhook structure
+- Try `/simple_embed_debug` for a quick overview
+- Use `/check_specific_message` with the webhook message ID
+- For stewardess webhooks, try `/debug_stewardess_webhook`
+
+**Tracking command not finding webhook data**
+- Use `/debug_tracking` to see what's in the cache vs. what's expected
+- Try `/scan_webhooks` to manually process recent webhooks
+- Use `/check_cache` to see all cached webhook data
+- Check name variations with `/debug_cache_timestamps`
 
 **Channel rename not working**
 - Check bot has "Manage Channels" permission
@@ -223,6 +338,20 @@ The following are hardcoded but can be modified in the source:
   - View Channel, Send Messages, Read Message History (all channels)
   - Manage Channels (opener channel)
 
+### Debug Commands for Troubleshooting
+
+For webhook detection issues:
+- `/debug_embed_details` - Comprehensive embed analysis
+- `/simple_embed_debug` - Quick overview of recent embeds
+- `/raw_field_debug` - Show exact field names and values
+- `/check_specific_message message_id:123` - Test specific webhook
+
+For tracking issues:
+- `/debug_tracking` - Compare ticket vs. cached data
+- `/scan_webhooks` - Manually process webhook history
+- `/check_cache` - View all cached webhook data
+- `/debug_cache_timestamps` - Debug timestamp and matching issues
+
 ## Security Considerations
 
 - All command responses are ephemeral (only visible to command user)
@@ -230,6 +359,7 @@ The following are hardcoded but can be modified in the source:
 - Card numbers and emails are logged in full - secure your log files appropriately
 - Database files contain sensitive payment information - implement appropriate backups and security
 - Consider rotating cards/emails regularly and removing old entries
+- Card digits 9-16 are logged for traceability while maintaining some security
 
 ## Advanced Usage
 
@@ -241,13 +371,25 @@ EXP_YEAR = '25'   # 2025
 ZIP_CODE = '90210'  # Beverly Hills
 ```
 
+### Webhook Processing Customization
+The webhook detection logic can be customized in `bot/utils/helpers.py`:
+- Modify detection patterns in `parse_webhook_fields()`
+- Adjust name matching logic in `generate_name_variations()`
+- Customize caching behavior in `cache_webhook_data()`
+
+### Logging Customization
+Logging behavior can be modified in `logging_utils.py`:
+- Change log file formats and naming
+- Modify what data is logged
+- Adjust log rotation schedules
 
 ## Support & Contributing
 
 For issues, feature requests, or contributions:
 1. Check the troubleshooting section above
-2. Verify your configuration matches the examples
-3. Test with minimal configuration first
-4. Check Discord bot permissions thoroughly
+2. Use the debug commands to gather detailed information
+3. Verify your configuration matches the examples
+4. Test with minimal configuration first
+5. Check Discord bot permissions thoroughly
 
-The combined bot provides streamlined order management and channel automation while maintaining security and comprehensive logging.
+The combined bot provides streamlined order management, automatic webhook tracking, and comprehensive debugging tools while maintaining security and detailed logging.
