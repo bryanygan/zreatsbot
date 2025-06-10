@@ -361,36 +361,49 @@ def setup(bot: commands.Bot):
         if not owner_only(interaction):
             return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
 
-        # First try to find a ticket embed for name/address info
+        # Use the same ticket embed that order commands use
         ticket_embed = await fetch_ticket_embed(interaction.channel)
-        webhook_embed = await fetch_webhook_embed(interaction.channel)
         
-        name = None
-        addr = None
+        if not ticket_embed:
+            return await interaction.response.send_message('❌ Could not find ticket embed.', ephemeral=True)
         
-        # Get name and address from ticket embed if available
-        if ticket_embed:
-            info = parse_fields(ticket_embed)
-            name = normalize_name_for_matching(info.get('name', ''))
-            addr = info.get('address', info.get('addr2', '')).lower().strip()
-        # Fallback to webhook embed if no ticket embed
-        elif webhook_embed:
-            webhook_info = parse_webhook_fields(webhook_embed)
-            name = normalize_name_for_matching(webhook_info.get('name', ''))
-            addr = webhook_info.get('address', '').lower().strip()
-        else:
-            return await interaction.response.send_message('❌ Could not find order information.', ephemeral=True)
+        # Parse the ticket embed the same way order commands do
+        info = parse_fields(ticket_embed)
+        ticket_name = info.get('name', '').strip()
         
-        if not name:
-            return await interaction.response.send_message('❌ Could not extract name from order.', ephemeral=True)
+        if not ticket_name:
+            return await interaction.response.send_message('❌ Could not extract name from ticket.', ephemeral=True)
         
-        # Try to find matching webhook data using improved matching
-        data = find_matching_webhook_data(name, addr)
+        # Normalize the ticket name for matching
+        normalized_ticket_name = normalize_name_for_matching(ticket_name)
+        
+        # Find matching webhook data using name-only matching
+        data = None
+        matched_key = None
+        
+        # Try exact normalized name match first
+        for (cached_name, cached_addr), cached_data in helpers.ORDER_WEBHOOK_CACHE.items():
+            if normalize_name_for_matching(cached_name) == normalized_ticket_name:
+                data = cached_data
+                matched_key = (cached_name, cached_addr)
+                break
+        
+        # If no exact match, try partial name matching
+        if not data:
+            for (cached_name, cached_addr), cached_data in helpers.ORDER_WEBHOOK_CACHE.items():
+                cached_normalized = normalize_name_for_matching(cached_name)
+                # Check if names contain each other or share significant parts
+                if (normalized_ticket_name in cached_normalized or 
+                    cached_normalized in normalized_ticket_name or
+                    any(part in cached_normalized for part in normalized_ticket_name.split() if len(part) > 2)):
+                    data = cached_data
+                    matched_key = (cached_name, cached_addr)
+                    break
         
         if not data:
             # Show debug info about what was found
-            cache_keys = [f"{k[0]} | {k[1]}" for k in helpers.ORDER_WEBHOOK_CACHE.keys()]
-            debug_msg = f'❌ No matching webhook found.\n**Looking for:** `{name} | {addr}`\n**Available cache keys:** {"; ".join(cache_keys) if cache_keys else "None"}'
+            cache_keys = [normalize_name_for_matching(k[0]) for k in helpers.ORDER_WEBHOOK_CACHE.keys()]
+            debug_msg = f'❌ No matching webhook found.\n**Ticket name:** `{ticket_name}` → `{normalized_ticket_name}`\n**Cached names:** {", ".join(cache_keys) if cache_keys else "None"}'
             return await interaction.response.send_message(debug_msg, ephemeral=True)
 
         # Create tracking embed
@@ -405,13 +418,8 @@ def setup(bot: commands.Bot):
         await interaction.response.send_message(embed=e)
         
         # Remove from cache after successful use
-        original_key = None
-        for key, cached_data in helpers.ORDER_WEBHOOK_CACHE.items():
-            if cached_data == data:
-                original_key = key
-                break
-        if original_key:
-            helpers.ORDER_WEBHOOK_CACHE.pop(original_key, None)
+        if matched_key:
+            helpers.ORDER_WEBHOOK_CACHE.pop(matched_key, None)
 
     @bot.tree.command(name='debug_tracking', description='Debug webhook lookup')
     async def debug_tracking(
