@@ -425,7 +425,7 @@ def setup(bot: commands.Bot):
     async def debug_tracking(
         interaction: discord.Interaction, search_limit: int = 50
     ):
-        """Display information about the most recent order embed and cache."""
+        """Display information about the ticket embed and webhook cache for debugging."""
 
         if not owner_only(interaction):
             return await interaction.response.send_message(
@@ -433,77 +433,145 @@ def setup(bot: commands.Bot):
             )
 
         debug_channel = interaction.guild.get_channel(1350935337475510297)
-        tracking_channel = interaction.guild.get_channel(1352067371006693499)
-
-        if tracking_channel is None:
-            msg = '❌ Tracking channel not found.'
-            if debug_channel:
-                await debug_channel.send(msg)
-            return await interaction.response.send_message(msg, ephemeral=True)
-
-        # Try different embed types
-        ticket_embed = await fetch_ticket_embed(tracking_channel, search_limit=search_limit)
-        webhook_embed = await fetch_webhook_embed(tracking_channel, search_limit=search_limit)
         
-        debug = discord.Embed(title='Tracking Debug', color=0xFFFF00)
+        # Get detailed info about all embeds in the channel
+        all_embeds = await helpers.debug_all_embeds(interaction.channel, search_limit=search_limit)
         
-        if ticket_embed:
-            info = parse_fields(ticket_embed)
-            name = normalize_name_for_matching(info.get('name', ''))
-            addr = info.get('address', info.get('addr2', '')).lower().strip()
-            debug.add_field(name='Ticket Embed Found', value='✅ Yes', inline=False)
-            debug.add_field(name='Ticket Name', value=name or 'None', inline=False)
-            debug.add_field(name='Ticket Address', value=addr or 'None', inline=False)
-        else:
-            debug.add_field(name='Ticket Embed Found', value='❌ No', inline=False)
+        # Use the same ticket embed that order commands use
+        ticket_embed = await fetch_ticket_embed(interaction.channel, search_limit=search_limit)
         
-        if webhook_embed:
-            webhook_info = parse_webhook_fields(webhook_embed)
-            webhook_name = normalize_name_for_matching(webhook_info.get('name', ''))
-            webhook_addr = webhook_info.get('address', '').lower().strip()
-            debug.add_field(name='Webhook Embed Found', value='✅ Yes', inline=False)
-            debug.add_field(name='Webhook Name', value=webhook_name or 'None', inline=False)
-            debug.add_field(name='Webhook Address', value=webhook_addr or 'None', inline=False)
-        else:
-            debug.add_field(name='Webhook Embed Found', value='❌ No', inline=False)
+        debug = discord.Embed(title='Tracking Debug - Detailed', color=0xFFFF00)
         
-        # Use the best available name/address for lookup
-        if ticket_embed:
-            info = parse_fields(ticket_embed)
-            name = normalize_name_for_matching(info.get('name', ''))
-            addr = info.get('address', info.get('addr2', '')).lower().strip()
-        elif webhook_embed:
-            webhook_info = parse_webhook_fields(webhook_embed)
-            name = normalize_name_for_matching(webhook_info.get('name', ''))
-            addr = webhook_info.get('address', '').lower().strip()
-        else:
-            msg = '❌ Could not locate any order embed.'
-            if debug_channel:
-                await debug_channel.send(msg)
-            return await interaction.response.send_message(msg, ephemeral=True)
-
-        # Try to find matching data
-        data = find_matching_webhook_data(name, addr)
-        
-        debug.add_field(name='Lookup Key', value=f'{name} | {addr}', inline=False)
-        debug.add_field(name='Cache Hit', value='✅ Yes' if data else '❌ No', inline=False)
-        
-        if not data:
-            cache_keys = [f'{k[0]} | {k[1]}' for k in helpers.ORDER_WEBHOOK_CACHE.keys()]
+        # Show embed analysis
+        if all_embeds:
+            embed_summary = []
+            for info in all_embeds[:5]:  # Show first 5
+                if 'error' in info:
+                    embed_summary.append(f"Error: {info['error']}")
+                else:
+                    webhook_text = " (webhook)" if info.get('webhook_id') else ""
+                    embed_summary.append(f"**{info['title']}**{webhook_text}: {', '.join(info['field_names'][:3])}...")
+            
             debug.add_field(
-                name='Available Cache Keys', 
-                value='; '.join(cache_keys) if cache_keys else 'None', 
+                name=f'Found {len(all_embeds)} Embeds', 
+                value='\n'.join(embed_summary) if embed_summary else 'None',
                 inline=False
             )
         else:
-            debug.add_field(name='Matched Data Store', value=data.get('store', 'None'), inline=False)
+            debug.add_field(name='Embeds Found', value='None', inline=False)
+        
+        if ticket_embed:
+            info = parse_fields(ticket_embed)
+            ticket_name = info.get('name', '').strip()
+            normalized_name = normalize_name_for_matching(ticket_name)
+            
+            debug.add_field(name='Ticket Embed Found', value='✅ Yes', inline=False)
+            debug.add_field(name='Ticket Name (Raw)', value=ticket_name or 'None', inline=False)
+            debug.add_field(name='Ticket Name (Normalized)', value=normalized_name or 'None', inline=False)
+            
+            # Try to find matching data using name-only matching
+            matched_data = None
+            matched_cache_name = None
+            
+            for (cached_name, cached_addr), cached_data in helpers.ORDER_WEBHOOK_CACHE.items():
+                if normalize_name_for_matching(cached_name) == normalized_name:
+                    matched_data = cached_data
+                    matched_cache_name = cached_name
+                    break
+            
+            debug.add_field(name='Exact Name Match', value='✅ Yes' if matched_data else '❌ No', inline=False)
+            
+            if matched_data:
+                debug.add_field(name='Matched Cache Name', value=matched_cache_name, inline=False)
+                debug.add_field(name='Matched Store', value=matched_data.get('store', 'None'), inline=False)
+        else:
+            debug.add_field(name='Ticket Embed Found', value='❌ No', inline=False)
+            
+            # Show what field names we're looking for vs what we found
+            debug.add_field(
+                name='Looking For Fields', 
+                value='Group Cart Link + Name (or Group Link + Name)', 
+                inline=False
+            )
+            
+            if all_embeds:
+                found_fields = []
+                for info in all_embeds[:3]:
+                    if 'field_names' in info:
+                        found_fields.extend(info['field_names'])
+                unique_fields = list(set(found_fields))
+                debug.add_field(
+                    name='Actually Found Fields', 
+                    value=', '.join(unique_fields[:10]) if unique_fields else 'None',
+                    inline=False
+                )
+        
+        # Show all cached names for comparison
+        if helpers.ORDER_WEBHOOK_CACHE:
+            cache_info = []
+            for (cached_name, cached_addr), cached_data in helpers.ORDER_WEBHOOK_CACHE.items():
+                normalized_cached = normalize_name_for_matching(cached_name)
+                cache_info.append(f"{cached_name} → {normalized_cached}")
+            
+            debug.add_field(
+                name='All Cached Names', 
+                value='; '.join(cache_info[:3]) + ('...' if len(cache_info) > 3 else ''), 
+                inline=False
+            )
+        else:
+            debug.add_field(name='Cache Status', value='Empty', inline=False)
 
-        status_msg = (
-            f'✅ Cache hit for `{name} | {addr}`.'
-            if data
-            else f'❌ No matching webhook found for `{name} | {addr}`.'
-        )
+        status_msg = f'Detailed debug for ticket embed search (checked {search_limit} messages)'
         if debug_channel:
             await debug_channel.send(status_msg)
 
+        await interaction.response.send_message(embed=debug, ephemeral=True)
+
+    @bot.tree.command(name='find_ticket', description='Search for ticket embed in channel')
+    async def find_ticket(interaction: discord.Interaction, search_limit: int = 100):
+        """Debug command to specifically look for ticket embeds"""
+        
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+        
+        all_embeds = await helpers.debug_all_embeds(interaction.channel, search_limit=search_limit)
+        
+        debug = discord.Embed(title=f'Ticket Search Results', color=0x00FFFF)
+        debug.add_field(name='Search Limit', value=str(search_limit), inline=False)
+        debug.add_field(name='Total Embeds Found', value=str(len(all_embeds)), inline=False)
+        
+        ticket_candidates = []
+        webhook_embeds = []
+        
+        for info in all_embeds:
+            if 'error' in info:
+                continue
+                
+            field_names = info.get('field_names', [])
+            
+            # Check if this could be a ticket embed
+            has_group_link = any('group' in name.lower() and 'link' in name.lower() for name in field_names)
+            has_name = any('name' in name.lower() for name in field_names)
+            
+            if has_group_link and has_name:
+                ticket_candidates.append(f"✅ **{info['title']}**: {', '.join(field_names)}")
+            elif info.get('webhook_id'):
+                webhook_embeds.append(f"🔗 **{info['title']}**: {', '.join(field_names[:3])}")
+        
+        if ticket_candidates:
+            debug.add_field(
+                name='Potential Ticket Embeds', 
+                value='\n'.join(ticket_candidates[:5]), 
+                inline=False
+            )
+        else:
+            debug.add_field(name='Potential Ticket Embeds', value='❌ None found', inline=False)
+        
+        if webhook_embeds:
+            debug.add_field(
+                name='Webhook Embeds Found', 
+                value='\n'.join(webhook_embeds[:5]), 
+                inline=False
+            )
+        
         await interaction.response.send_message(embed=debug, ephemeral=True)
