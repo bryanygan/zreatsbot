@@ -1,11 +1,14 @@
 import sqlite3
 from pathlib import Path
+from queue import SimpleQueue, Empty
 
 # Path to the SQLite database file
 DB_PATH = Path(__file__).parent / 'data' / 'pool.db'
 
 # Module-level database connection
 DB_CONN = None
+_POOL_SIZE = 3
+_POOL: SimpleQueue[sqlite3.Connection] = SimpleQueue()
 
 
 def init_db():
@@ -56,9 +59,31 @@ def init_db():
     conn.close()
 
 
+def _init_pool(size: int = _POOL_SIZE):
+    """Pre-open a small pool of SQLite connections."""
+    for _ in range(size):
+        _POOL.put(sqlite3.connect(DB_PATH, check_same_thread=False))
+
+
+
 def get_connection():
     """Return the module-level SQLite connection."""
     return DB_CONN
+
+
+def acquire_connection() -> sqlite3.Connection:
+    """Get a connection from the pool or fall back to the shared connection."""
+    try:
+        return _POOL.get_nowait()
+    except Empty:
+        return DB_CONN
+
+
+def release_connection(conn: sqlite3.Connection) -> None:
+    """Return a connection to the pool if it's not the shared singleton."""
+    if conn is DB_CONN:
+        return
+    _POOL.put(conn)
 
 
 def close_connection():
@@ -67,6 +92,13 @@ def close_connection():
     if DB_CONN is not None:
         DB_CONN.close()
         DB_CONN = None
+    while True:
+        try:
+            conn = _POOL.get_nowait()
+        except Empty:
+            break
+        else:
+            conn.close()
 
 
 def get_and_remove_card():
@@ -123,3 +155,4 @@ def get_pool_counts() -> tuple:
 # Initialize DB on import and create the shared connection
 init_db()
 DB_CONN = sqlite3.connect(DB_PATH, check_same_thread=False)
+_init_pool()
