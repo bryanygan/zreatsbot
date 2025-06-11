@@ -18,6 +18,7 @@ from ..utils.helpers import (
     is_valid_field,
     owner_only,
     find_matching_webhook_data,
+    convert_24h_to_12h,
 )
 from ..utils.card_validator import CardValidator
 from ..utils.channel_status import rename_history  # not used maybe? but not required
@@ -935,7 +936,10 @@ def setup(bot: commands.Bot):
                 e.add_field(name='', value=tracking_text, inline=False)
             
             e.add_field(name='Store', value=data.get('store'), inline=False)
-            e.add_field(name='Estimated Arrival', value=data.get('eta'), inline=False)
+            eta_value = data.get('eta')
+            if eta_value:
+                eta_value = convert_24h_to_12h(eta_value)
+            e.add_field(name='Estimated Arrival', value=eta_value, inline=False)
             e.add_field(name='Order Items', value=data.get('items'), inline=False)
             e.add_field(name='Name', value=data.get('name'), inline=False)
             e.add_field(name='Delivery Address', value=data.get('address'), inline=False)
@@ -949,7 +953,8 @@ def setup(bot: commands.Bot):
             
             e.add_field(name='Store', value=data.get('store'), inline=False)
             if data.get('eta') and data.get('eta') != 'N/A':
-                e.add_field(name='Estimated Arrival', value=data.get('eta'), inline=False)
+                eta_value = convert_24h_to_12h(data.get('eta'))
+                e.add_field(name='Estimated Arrival', value=eta_value, inline=False)
             if data.get('items'):
                 e.add_field(name='Items Ordered', value=data.get('items'), inline=False)
             e.add_field(name='Name', value=data.get('name'), inline=False)
@@ -959,7 +964,7 @@ def setup(bot: commands.Bot):
 
         await interaction.followup.send(embed=e)
 
-        
+
     @bot.tree.command(name='debug_tracking', description='Debug webhook lookup')
     async def debug_tracking(
         interaction: discord.Interaction, search_limit: int = 50

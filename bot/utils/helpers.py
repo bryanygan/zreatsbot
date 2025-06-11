@@ -2,6 +2,7 @@ import os
 import discord
 from typing import Optional
 from datetime import datetime
+import re
 
 OWNER_ID = int(os.getenv('OWNER_ID')) if os.getenv('OWNER_ID') else None
 
@@ -474,3 +475,49 @@ def cache_webhook_data(data: dict, message_timestamp: datetime = None, message_i
         'message_id': message_id
     }
     return True
+
+def convert_24h_to_12h(time_text):
+    """
+    Convert 24-hour time format to 12-hour format in a text string.
+    Handles various time formats like "14:30", "2:30 PM", "14:30 - 15:00", etc.
+    
+    Args:
+        time_text (str): Text that may contain time in 24-hour format
+        
+    Returns:
+        str: Text with times converted to 12-hour format
+    """
+    if not time_text:
+        return time_text
+    
+    def convert_single_time(match):
+        """Convert a single time match from 24h to 12h format"""
+        hour_str = match.group(1)
+        minute_str = match.group(2)
+        
+        hour = int(hour_str)
+        minute = int(minute_str)
+        
+        # Handle 24-hour conversion
+        if hour == 0:
+            period = "AM"
+            display_hour = 12
+        elif hour < 12:
+            period = "AM"
+            display_hour = hour
+        elif hour == 12:
+            period = "PM"
+            display_hour = 12
+        else:
+            period = "PM"
+            display_hour = hour - 12
+        
+        return f"{display_hour}:{minute:02d} {period}"
+    
+    # Pattern to match 24-hour time format (HH:MM)
+    pattern = r'\b(\d{1,2}):(\d{2})\b(?!\s*[AaPp][Mm])'
+    
+    # Replace all 24-hour times with 12-hour format
+    converted_text = re.sub(pattern, convert_single_time, time_text)
+    
+    return converted_text
