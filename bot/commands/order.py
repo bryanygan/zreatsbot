@@ -859,8 +859,8 @@ def setup(bot: commands.Bot):
         if not tracking_channel:
             return await interaction.followup.send('❌ Could not access tracking channel for scanning.', ephemeral=True)
         
-        # Scan recent messages for webhooks (last 100 messages should be enough for recent orders)
-        scan_limit = 100
+        # Scan recent messages for webhooks (last 25 messages should be enough for recent orders)
+        scan_limit = 25
         found_webhooks = 0
         cached_webhooks = 0
         updated_webhooks = 0
