@@ -9,6 +9,7 @@ from datetime import datetime
 from logging_utils import log_command_output, get_recent_logs, get_full_logs, get_log_stats
 from ..utils.card_validator import CardValidator
 from ..utils.helpers import owner_only
+import db
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db')
 
@@ -30,18 +31,18 @@ def setup(bot: commands.Bot):
         cleaned_number = CardValidator.format_card_number(number)
         cleaned_cvv = cvv.strip()
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = db.acquire_connection()
         cur = conn.cursor()
         cur.execute("SELECT COUNT(*) FROM cards WHERE number = ? AND cvv = ?", (cleaned_number, cleaned_cvv))
         exists = cur.fetchone()[0] > 0
 
         if exists:
-            conn.close()
+            db.release_connection(conn)
             return await interaction.response.send_message(f"❌ Card ending in {cleaned_number[-4:]} already exists in pool.", ephemeral=True)
 
         cur.execute("INSERT INTO cards (number, cvv) VALUES (?, ?)", (cleaned_number, cleaned_cvv))
         conn.commit()
-        conn.close()
+        db.release_connection(conn)
 
         await interaction.response.send_message(f"✅ Card ending in {cleaned_number[-4:]} added successfully.", ephemeral=True)
 
@@ -51,7 +52,7 @@ def setup(bot: commands.Bot):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = db.acquire_connection()
         cur = conn.cursor()
         if top:
             cur.execute("SELECT MIN(id) FROM emails")
@@ -65,7 +66,7 @@ def setup(bot: commands.Bot):
         else:
             cur.execute("INSERT INTO emails (email) VALUES (?)", (email,))
         conn.commit()
-        conn.close()
+        db.release_connection(conn)
         await interaction.response.send_message(f"✅ Email `{email}` added.", ephemeral=True)
 
     @bot.tree.command(name='read_cards', description='(Admin) List all cards in the pool')
@@ -73,11 +74,11 @@ def setup(bot: commands.Bot):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = db.acquire_connection()
         cur = conn.cursor()
         cur.execute("SELECT number, cvv FROM cards")
         rows = cur.fetchall()
-        conn.close()
+        db.release_connection(conn)
 
         if not rows:
             return await interaction.response.send_message("✅ No cards in the pool.", ephemeral=True)
@@ -91,11 +92,11 @@ def setup(bot: commands.Bot):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = db.acquire_connection()
         cur = conn.cursor()
         cur.execute("SELECT email FROM emails")
         rows = cur.fetchall()
-        conn.close()
+        db.release_connection(conn)
 
         if not rows:
             return await interaction.response.send_message("✅ No emails in the pool.", ephemeral=True)
@@ -163,11 +164,12 @@ def setup(bot: commands.Bot):
             if not cards_to_add:
                 return await interaction.response.send_message("❌ No valid cards found in the file.", ephemeral=True)
 
-            conn = sqlite3.connect(DB_PATH)
+            conn = db.acquire_connection()
             cur = conn.cursor()
 
             added_count = 0
             duplicate_count = 0
+            inserts = []
 
             for number, cvv in cards_to_add:
                 cur.execute("SELECT COUNT(*) FROM cards WHERE number = ? AND cvv = ?", (number, cvv))
@@ -176,11 +178,14 @@ def setup(bot: commands.Bot):
                 if exists:
                     duplicate_count += 1
                 else:
-                    cur.execute("INSERT INTO cards (number, cvv) VALUES (?, ?)", (number, cvv))
+                    inserts.append((number, cvv))
                     added_count += 1
 
+            if inserts:
+                cur.executemany("INSERT INTO cards (number, cvv) VALUES (?, ?)", inserts)
+
             conn.commit()
-            conn.close()
+            db.release_connection(conn)
 
             success_msg = f"✅ Successfully added {added_count} cards to the pool."
             if duplicate_count > 0:
@@ -243,11 +248,12 @@ def setup(bot: commands.Bot):
             if not emails_to_add:
                 return await interaction.response.send_message("❌ No valid emails found in the file.", ephemeral=True)
 
-            conn = sqlite3.connect(DB_PATH)
+            conn = db.acquire_connection()
             cur = conn.cursor()
 
             added_count = 0
             duplicate_count = 0
+            inserts = []
 
             for email in emails_to_add:
                 cur.execute("SELECT COUNT(*) FROM emails WHERE email = ?", (email,))
@@ -256,11 +262,14 @@ def setup(bot: commands.Bot):
                 if exists:
                     duplicate_count += 1
                 else:
-                    cur.execute("INSERT INTO emails (email) VALUES (?)", (email,))
+                    inserts.append((email,))
                     added_count += 1
 
+            if inserts:
+                cur.executemany("INSERT INTO emails (email) VALUES (?)", inserts)
+
             conn.commit()
-            conn.close()
+            db.release_connection(conn)
 
             success_msg = f"✅ Successfully added {added_count} emails to the pool."
             if duplicate_count > 0:
@@ -278,12 +287,12 @@ def setup(bot: commands.Bot):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = db.acquire_connection()
         cur = conn.cursor()
         cur.execute("DELETE FROM cards WHERE number = ? AND cvv = ?", (number, cvv))
         deleted = cur.rowcount
         conn.commit()
-        conn.close()
+        db.release_connection(conn)
 
         if deleted:
             await interaction.response.send_message(f"✅ Removed card ending in {number[-4:]}.", ephemeral=True)
@@ -295,12 +304,12 @@ def setup(bot: commands.Bot):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
 
-        conn = sqlite3.connect(DB_PATH)
+        conn = db.acquire_connection()
         cur = conn.cursor()
         cur.execute("DELETE FROM emails WHERE email = ?", (email,))
         deleted = cur.rowcount
         conn.commit()
-        conn.close()
+        db.release_connection(conn)
 
         if deleted:
             await interaction.response.send_message(f"✅ Removed email `{email}` from the pool.", ephemeral=True)

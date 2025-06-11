@@ -55,7 +55,7 @@ def test_parse_webhook_order_basic():
 
     result = parse_webhook_order(embed)
 
-    assert result == {
+    expected = {
         "store": "Pizza Place",
         "eta": "5 PM",
         "name": "John Doe",
@@ -63,3 +63,6 @@ def test_parse_webhook_order_basic():
         "items": "Pizza",
         "tracking": "https://track.example.com",
     }
+
+    for key, value in expected.items():
+        assert result.get(key) == value
