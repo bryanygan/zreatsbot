@@ -586,6 +586,9 @@ def setup(bot: commands.Bot):
         footer_parts = [f"Cards: {card_count}", f"Emails: {email_count}"]
         footer_parts.extend(warnings)
         embed.set_footer(text=" | ".join(footer_parts))
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
     @bot.tree.command(name='debug_stewardess_webhook', description='Debug the stewardess webhook specifically')
     async def debug_stewardess_webhook(interaction: discord.Interaction):
         """Debug the specific stewardess webhook that's not being detected"""
