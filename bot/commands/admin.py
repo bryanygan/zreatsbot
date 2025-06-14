@@ -48,6 +48,7 @@ def setup(bot: commands.Bot):
 
     @bot.tree.command(name='add_email', description='(Admin) Add an email to the specified pool')
     @app_commands.describe(
+        email="Email address to add to the pool",
         pool="Email pool to add to (main, pump_20off25, pump_25off)",
         top="Add this email to the top of the pool so it's used first"
     )
@@ -255,8 +256,17 @@ def setup(bot: commands.Bot):
         except Exception as e:
             await interaction.response.send_message(f"❌ Error processing file: {str(e)}", ephemeral=True)
 
-    @bot.tree.command(name='bulk_emails', description='(Admin) Add multiple emails from a text file')
-    async def bulk_emails(interaction: discord.Interaction, file: discord.Attachment):
+    @bot.tree.command(name='bulk_emails', description='(Admin) Add multiple emails from a text file to specified pool')
+    @app_commands.describe(
+        file="Text file with one email per line",
+        pool="Email pool to add emails to (main, pump_20off25, pump_25off)"
+    )
+    @app_commands.choices(pool=[
+        app_commands.Choice(name='Main Pool', value='main'),
+        app_commands.Choice(name='Pump 20off25', value='pump_20off25'),
+        app_commands.Choice(name='Pump 25off', value='pump_25off'),
+    ])
+    async def bulk_emails(interaction: discord.Interaction, file: discord.Attachment, pool: app_commands.Choice[str] = None):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
 
@@ -266,6 +276,8 @@ def setup(bot: commands.Bot):
         if file.size > 1024 * 1024:
             return await interaction.response.send_message("❌ File too large. Maximum size is 1MB.", ephemeral=True)
 
+        pool_type = pool.value if pool else 'main'  # Default to main pool if not specified
+        
         try:
             file_content = await file.read()
             text_content = file_content.decode('utf-8')
@@ -305,30 +317,22 @@ def setup(bot: commands.Bot):
             if not emails_to_add:
                 return await interaction.response.send_message("❌ No valid emails found in the file.", ephemeral=True)
 
-            conn = db.acquire_connection()
-            cur = conn.cursor()
-
+            # Use the database function to add emails with proper pool handling
             added_count = 0
             duplicate_count = 0
-            inserts = []
 
             for email in emails_to_add:
-                cur.execute("SELECT COUNT(*) FROM emails WHERE email = ?", (email,))
-                exists = cur.fetchone()[0] > 0
+                try:
+                    success = db.add_email_to_pool(email, pool_type, top=False)
+                    if success:
+                        added_count += 1
+                    else:
+                        duplicate_count += 1
+                except ValueError as e:
+                    # Invalid pool type - should not happen with choices, but handle gracefully
+                    return await interaction.response.send_message(f"❌ {str(e)}", ephemeral=True)
 
-                if exists:
-                    duplicate_count += 1
-                else:
-                    inserts.append((email,))
-                    added_count += 1
-
-            if inserts:
-                cur.executemany("INSERT INTO emails (email) VALUES (?)", inserts)
-
-            conn.commit()
-            db.release_connection(conn)
-
-            success_msg = f"✅ Successfully added {added_count} emails to the pool."
+            success_msg = f"✅ Successfully added {added_count} emails to **{pool_type}** pool."
             if duplicate_count > 0:
                 success_msg += f" ({duplicate_count} duplicates skipped)"
 
@@ -356,22 +360,44 @@ def setup(bot: commands.Bot):
         else:
             await interaction.response.send_message("❌ No matching card found in the pool.", ephemeral=True)
 
-    @bot.tree.command(name='remove_email', description='(Admin) Remove an email from the pool')
-    async def remove_email(interaction: discord.Interaction, email: str):
+    @bot.tree.command(name='remove_email', description='(Admin) Remove an email from specified pool')
+    @app_commands.describe(
+        email="Email address to remove",
+        pool="Email pool to remove from (leave blank to remove from all pools)"
+    )
+    @app_commands.choices(pool=[
+        app_commands.Choice(name='Main Pool', value='main'),
+        app_commands.Choice(name='Pump 20off25', value='pump_20off25'),
+        app_commands.Choice(name='Pump 25off', value='pump_25off'),
+    ])
+    async def remove_email(interaction: discord.Interaction, email: str, pool: app_commands.Choice[str] = None):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
 
-        conn = db.acquire_connection()
-        cur = conn.cursor()
-        cur.execute("DELETE FROM emails WHERE email = ?", (email,))
-        deleted = cur.rowcount
-        conn.commit()
-        db.release_connection(conn)
-
-        if deleted:
-            await interaction.response.send_message(f"✅ Removed email `{email}` from the pool.", ephemeral=True)
+        if pool:
+            # Remove from specific pool
+            pool_type = pool.value
+            try:
+                success = db.remove_email_from_pool(email, pool_type)
+                if success:
+                    await interaction.response.send_message(f"✅ Removed email `{email}` from **{pool_type}** pool.", ephemeral=True)
+                else:
+                    await interaction.response.send_message(f"❌ Email `{email}` not found in **{pool_type}** pool.", ephemeral=True)
+            except ValueError as e:
+                await interaction.response.send_message(f"❌ {str(e)}", ephemeral=True)
         else:
-            await interaction.response.send_message("❌ No matching email found in the pool.", ephemeral=True)
+            # Remove from all pools (legacy behavior)
+            conn = db.acquire_connection()
+            cur = conn.cursor()
+            cur.execute("DELETE FROM emails WHERE email = ?", (email,))
+            deleted = cur.rowcount
+            conn.commit()
+            db.release_connection(conn)
+
+            if deleted:
+                await interaction.response.send_message(f"✅ Removed email `{email}` from all pools ({deleted} instances).", ephemeral=True)
+            else:
+                await interaction.response.send_message("❌ No matching email found in any pool.", ephemeral=True)
 
     @bot.tree.command(name='full_logs', description='(Admin) Print recent command logs with full email and command output')
     @app_commands.describe(count="Number of recent logs to retrieve (default: 5, max: 50)")
