@@ -120,18 +120,17 @@ class CombinedBot(commands.Bot):
         if result is None:
             return None
         number, cvv = result
-        card_count, _ = db_get_pool_counts()
+        pool_counts = db_get_pool_counts()
+        card_count = pool_counts['cards']
         return number, cvv, card_count == 0
 
-    def get_and_remove_email(self) -> Optional[Tuple[str, bool]]:
-        result = db_get_and_remove_email()
-        if result is None:
-            return None
-        email = result
-        _, email_count = db_get_pool_counts()
-        return email, email_count == 0
+    def get_and_remove_email(self, pool_type: str = 'main') -> Optional[str]:
+        """Get and remove email from specified pool"""
+        result = db_get_and_remove_email(pool_type)
+        return result
 
-    def get_pool_counts(self) -> Tuple[int, int]:
+    def get_pool_counts(self) -> dict:
+        """Get pool counts in new format"""
         return db_get_pool_counts()
 
     async def fetch_order_embed(
@@ -249,4 +248,16 @@ if __name__ == "__main__":
     print("🚀 Starting Discord bot...")
     print(f"🔓 Opener channel: {OPENER_CHANNEL_ID or 'Not configured'}")
     print(f"👑 Owner ID: {OWNER_ID or 'Not configured'}")
+    
+    # Show pool information on startup
+    try:
+        import db
+        pool_counts = db.get_pool_counts()
+        print(f"📊 Pool Status:")
+        print(f"   Cards: {pool_counts['cards']}")
+        for pool_name, count in pool_counts['emails'].items():
+            print(f"   {pool_name} emails: {count}")
+    except Exception as e:
+        print(f"⚠️ Could not get pool status: {e}")
+    
     bot.run(BOT_TOKEN)

@@ -46,28 +46,31 @@ def setup(bot: commands.Bot):
 
         await interaction.response.send_message(f"✅ Card ending in {cleaned_number[-4:]} added successfully.", ephemeral=True)
 
-    @bot.tree.command(name='add_email', description='(Admin) Add an email to the pool')
-    @app_commands.describe(top="Add this email to the top of the pool so it's used first")
-    async def add_email(interaction: discord.Interaction, email: str, top: bool = False):
+    @bot.tree.command(name='add_email', description='(Admin) Add an email to the specified pool')
+    @app_commands.describe(
+        pool="Email pool to add to (main, pump_20off25, pump_25off)",
+        top="Add this email to the top of the pool so it's used first"
+    )
+    @app_commands.choices(pool=[
+        app_commands.Choice(name='Main Pool', value='main'),
+        app_commands.Choice(name='Pump 20off25', value='pump_20off25'),
+        app_commands.Choice(name='Pump 25off', value='pump_25off'),
+    ])
+    async def add_email(interaction: discord.Interaction, email: str, pool: app_commands.Choice[str] = None, top: bool = False):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
 
-        conn = db.acquire_connection()
-        cur = conn.cursor()
-        if top:
-            cur.execute("SELECT MIN(id) FROM emails")
-            row = cur.fetchone()
-            min_id = row[0] if row and row[0] is not None else None
-            if min_id is None:
-                cur.execute("INSERT INTO emails (email) VALUES (?)", (email,))
+        pool_type = pool.value if pool else 'main'
+        
+        try:
+            success = db.add_email_to_pool(email, pool_type, top)
+            if success:
+                position = "top of" if top else "end of"
+                await interaction.response.send_message(f"✅ Email `{email}` added to {position} **{pool_type}** pool.", ephemeral=True)
             else:
-                new_id = min_id - 1
-                cur.execute("INSERT INTO emails (id, email) VALUES (?, ?)", (new_id, email))
-        else:
-            cur.execute("INSERT INTO emails (email) VALUES (?)", (email,))
-        conn.commit()
-        db.release_connection(conn)
-        await interaction.response.send_message(f"✅ Email `{email}` added.", ephemeral=True)
+                await interaction.response.send_message(f"❌ Email `{email}` already exists in **{pool_type}** pool.", ephemeral=True)
+        except ValueError as e:
+            await interaction.response.send_message(f"❌ {str(e)}", ephemeral=True)
 
     @bot.tree.command(name='read_cards', description='(Admin) List all cards in the pool')
     async def read_cards(interaction: discord.Interaction):
@@ -87,23 +90,77 @@ def setup(bot: commands.Bot):
         payload = "Cards in pool:\n" + "\n".join(lines)
         await interaction.response.send_message(f"```{payload}```", ephemeral=True)
 
-    @bot.tree.command(name='read_emails', description='(Admin) List all emails in the pool')
-    async def read_emails(interaction: discord.Interaction):
+    @bot.tree.command(name='read_emails', description='(Admin) List all emails in the specified pool')
+    @app_commands.describe(pool="Email pool to read from (leave blank to see all pools)")
+    @app_commands.choices(pool=[
+        app_commands.Choice(name='Main Pool', value='main'),
+        app_commands.Choice(name='Pump 20off25', value='pump_20off25'),
+        app_commands.Choice(name='Pump 25off', value='pump_25off'),
+    ])
+    async def read_emails(interaction: discord.Interaction, pool: app_commands.Choice[str] = None):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
 
-        conn = db.acquire_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT email FROM emails")
-        rows = cur.fetchall()
-        db.release_connection(conn)
-
-        if not rows:
-            return await interaction.response.send_message("✅ No emails in the pool.", ephemeral=True)
-
-        lines = [email for (email,) in rows]
-        payload = "Emails in pool:\n" + "\n".join(lines)
-        await interaction.response.send_message(f"```{payload}```", ephemeral=True)
+        if pool:
+            # Show specific pool
+            pool_type = pool.value
+            try:
+                emails = db.get_emails_in_pool(pool_type)
+                if not emails:
+                    return await interaction.response.send_message(f"✅ No emails in **{pool_type}** pool.", ephemeral=True)
+                
+                payload = f"Emails in **{pool_type}** pool ({len(emails)} total):\n" + "\n".join(emails)
+                await interaction.response.send_message(f"```{payload}```", ephemeral=True)
+            except ValueError as e:
+                await interaction.response.send_message(f"❌ {str(e)}", ephemeral=True)
+        else:
+            # Show all pools
+            all_emails = db.get_all_emails_with_pools()
+            if not all_emails:
+                return await interaction.response.send_message("✅ No emails in any pool.", ephemeral=True)
+            
+            # Group by pool type
+            pools = {}
+            for email, pool_type in all_emails:
+                if pool_type not in pools:
+                    pools[pool_type] = []
+                pools[pool_type].append(email)
+            
+            output_lines = []
+            for pool_type in db.VALID_EMAIL_POOLS:
+                emails = pools.get(pool_type, [])
+                output_lines.append(f"**{pool_type}** pool ({len(emails)} emails):")
+                if emails:
+                    output_lines.extend([f"  {email}" for email in emails[:10]])
+                    if len(emails) > 10:
+                        output_lines.append(f"  ... and {len(emails) - 10} more")
+                else:
+                    output_lines.append("  (empty)")
+                output_lines.append("")
+            
+            payload = "\n".join(output_lines)
+            
+            if len(payload) > 1800:
+                with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+                    f.write("All Email Pools\n")
+                    f.write("=" * 50 + "\n\n")
+                    f.write(payload)
+                    temp_file_path = f.name
+                try:
+                    with open(temp_file_path, 'rb') as f:
+                        discord_file = discord.File(f, filename="all_email_pools.txt")
+                        await interaction.response.send_message(
+                            f"📄 **All Email Pools** (sent as file due to length)",
+                            file=discord_file,
+                            ephemeral=True
+                        )
+                finally:
+                    try:
+                        os.unlink(temp_file_path)
+                    except Exception:
+                        pass
+            else:
+                await interaction.response.send_message(f"```{payload}```", ephemeral=True)
 
     @bot.tree.command(name='bulk_cards', description='(Admin) Add multiple cards from a text file')
     async def bulk_cards(interaction: discord.Interaction, file: discord.Attachment):

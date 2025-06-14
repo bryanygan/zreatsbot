@@ -24,7 +24,7 @@ def log_command_output(
     Log command output to multiple formats (JSON, CSV, and TXT)
     
     Args:
-        command_type: Type of command (fusion_assist, fusion_order, wool_order)
+        command_type: Type of command (fusion_assist, fusion_order, wool_order, pump_order)
         user_id: Discord user ID
         username: Discord username
         channel_id: Discord channel ID
@@ -33,7 +33,7 @@ def log_command_output(
         tip_amount: Tip amount from the order
         card_used: Tuple of (card_number, cvv) that was consumed
         email_used: Email that was consumed
-        additional_data: Any additional data to log
+        additional_data: Any additional data to log (including email_pool)
     """
     timestamp = datetime.now()
     
@@ -51,12 +51,18 @@ def log_command_output(
         if len(card_number) >= 16:
             card_digits_9_16 = card_number[8:16]  # Digits 9-16 (0-indexed)
     
+    # Extract email pool information
+    email_pool = "unknown"
+    if additional_data:
+        email_pool = additional_data.get('email_pool', 'unknown')
+    
     # Prepare log entry
     log_entry = {
         "timestamp": timestamp.isoformat(),
         "command_type": command_type,
         "command_output": command_output,
         "email_used": email_used,
+        "email_pool": email_pool,
         "card_full": card_full,
         "card_digits_9_12": card_digits_9_12,
         "card_digits_9_16": card_digits_9_16,
@@ -97,10 +103,10 @@ def _log_to_json(filename: str, log_entry: Dict[str, Any]):
 def _log_to_csv(filename: str, log_entry: Dict[str, Any]):
     """Append log entry to CSV file"""
     try:
-        # Define CSV headers
+        # Define CSV headers (updated to include email_pool)
         headers = [
             "timestamp", "command_type", "command_output", 
-            "email_used", "card_full", "card_digits_9_12"
+            "email_used", "email_pool", "card_full", "card_digits_9_12"
         ]
         
         # Check if file exists
@@ -112,6 +118,7 @@ def _log_to_csv(filename: str, log_entry: Dict[str, Any]):
             log_entry["command_type"],
             log_entry["command_output"],
             log_entry["email_used"],
+            log_entry["email_pool"],
             log_entry["card_full"],
             log_entry["card_digits_9_12"]
         ]
@@ -133,7 +140,7 @@ def _log_to_txt(filename: str, log_entry: Dict[str, Any], timestamp: datetime):
             f.write(f"TIMESTAMP: {timestamp.strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"COMMAND TYPE: {log_entry['command_type']}\n")
             if log_entry['email_used']:
-                f.write(f"EMAIL USED: {log_entry['email_used']}\n")
+                f.write(f"EMAIL USED: {log_entry['email_used']} (pool: {log_entry['email_pool']})\n")
             if log_entry['card_full']:
                 f.write(f"CARD USED: {log_entry['card_full']}\n")
             if log_entry['card_digits_9_12']:
@@ -206,7 +213,7 @@ def get_log_stats(month: str = None) -> Dict[str, Any]:
                If None, uses current month
     
     Returns:
-        Dictionary with statistics
+        Dictionary with statistics including pool usage
     """
     if month is None:
         month = datetime.now().strftime('%Y%m')
@@ -225,6 +232,7 @@ def get_log_stats(month: str = None) -> Dict[str, Any]:
             "command_types": {},
             "emails_used": set(),
             "cards_used": set(),
+            "pool_usage": {},
             "date_range": {"start": None, "end": None}
         }
         
@@ -236,6 +244,11 @@ def get_log_stats(month: str = None) -> Dict[str, Any]:
             # Track emails
             if entry.get("email_used"):
                 stats["emails_used"].add(entry["email_used"])
+            
+            # Track email pool usage
+            email_pool = entry.get("email_pool", "unknown")
+            if email_pool != "unknown" and email_pool != "custom":
+                stats["pool_usage"][email_pool] = stats["pool_usage"].get(email_pool, 0) + 1
             
             # Track cards (digits 9-12)
             if entry.get("card_digits_9_12"):

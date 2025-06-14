@@ -21,8 +21,9 @@ from ..utils.helpers import (
     convert_24h_to_12h,
 )
 from ..utils.card_validator import CardValidator
-from ..utils.channel_status import rename_history  # not used maybe? but not required
+from ..utils.channel_status import rename_history
 from logging_utils import log_command_output
+import db
 
 EXP_MONTH = '06'
 EXP_YEAR = '30'
@@ -112,7 +113,7 @@ def setup(bot: commands.Bot):
                 tip_amount=info['tip'],
                 card_used=card,
                 email_used=email,
-                additional_data={"mode": mode.value, "parsed_fields": info, "custom_email": email, "card_source": card_source},
+                additional_data={"mode": mode.value, "parsed_fields": info, "custom_email": email, "card_source": card_source, "email_pool": "custom"},
             )
 
         embed = discord.Embed(title="Fusion Assist", color=0x00ff00)
@@ -120,11 +121,14 @@ def setup(bot: commands.Bot):
         if email:
             embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
         embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
-        card_count, email_count = bot.get_pool_counts()
+        pool_counts = bot.get_pool_counts()
+        card_count = pool_counts['cards']
         warnings = []
         if was_last_card and card_source == "pool":
             warnings.append("⚠️ Card pool empty!")
-        footer_parts = [f"Cards: {card_count}", f"Emails: {email_count}"]
+        footer_parts = [f"Cards: {card_count}"]
+        for pool_name, email_count in pool_counts['emails'].items():
+            footer_parts.append(f"{pool_name}: {email_count}")
         footer_parts.extend(warnings)
         embed.set_footer(text=" | ".join(footer_parts))
         
@@ -527,19 +531,19 @@ def setup(bot: commands.Bot):
             card_source = "pool"
 
         was_last_email = False
+        email_pool_used = "main"
         if custom_email:
             email = custom_email
             email_source = "custom"
+            email_pool_used = "custom"
         else:
-            email_result = bot.get_and_remove_email()
+            email_result = bot.get_and_remove_email('main')
             if email_result is None:
-                return await interaction.response.send_message("❌ Email pool is empty.", ephemeral=True)
-            if isinstance(email_result, tuple) and len(email_result) == 2:
-                email, was_last_email = email_result
-            else:
-                email = email_result
-                was_last_email = False
+                return await interaction.response.send_message("❌ Main email pool is empty.", ephemeral=True)
+            email = email_result
             email_source = "pool"
+            pool_counts = bot.get_pool_counts()
+            was_last_email = pool_counts['emails']['main'] == 0
 
         raw_name = info['name']
         parts = [f"/order uber order_details:{info['link']},{number},{EXP_MONTH},{EXP_YEAR},{cvv},{ZIP_CODE},{email}"]
@@ -570,20 +574,23 @@ def setup(bot: commands.Bot):
                 tip_amount=info['tip'],
                 card_used=card if card_source == "pool" else None,
                 email_used=email if email_source == "pool" else None,
-                additional_data={"parsed_fields": info, "card_source": card_source, "email_source": email_source},
+                additional_data={"parsed_fields": info, "card_source": card_source, "email_source": email_source, "email_pool": email_pool_used},
             )
 
         embed = discord.Embed(title="Fusion Order", color=0x0099ff)
         embed.add_field(name="", value=f"```{command}```", inline=False)
-        embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
+        embed.add_field(name="**Email used:**", value=f"```{email} ({email_pool_used})```", inline=False)
         embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
-        card_count, email_count = bot.get_pool_counts()
+        pool_counts = bot.get_pool_counts()
+        card_count = pool_counts['cards']
         warnings = []
         if was_last_card and card_source == "pool":
             warnings.append("⚠️ Card pool empty!")
         if was_last_email and email_source == "pool":
-            warnings.append("⚠️ Email pool empty!")
-        footer_parts = [f"Cards: {card_count}", f"Emails: {email_count}"]
+            warnings.append("⚠️ Main email pool empty!")
+        footer_parts = [f"Cards: {card_count}"]
+        for pool_name, email_count in pool_counts['emails'].items():
+            footer_parts.append(f"{pool_name}: {email_count}")
         footer_parts.extend(warnings)
         embed.set_footer(text=" | ".join(footer_parts))
 
@@ -773,19 +780,19 @@ def setup(bot: commands.Bot):
             card_source = "pool"
 
         was_last_email = False
+        email_pool_used = "main"
         if custom_email:
             email = custom_email
             email_source = "custom"
+            email_pool_used = "custom"
         else:
-            email_result = bot.get_and_remove_email()
+            email_result = bot.get_and_remove_email('main')
             if email_result is None:
-                return await interaction.response.send_message("❌ Email pool is empty.", ephemeral=True)
-            if isinstance(email_result, tuple) and len(email_result) == 2:
-                email, was_last_email = email_result
-            else:
-                email = email_result
-                was_last_email = False
+                return await interaction.response.send_message("❌ Main email pool is empty.", ephemeral=True)
+            email = email_result
             email_source = "pool"
+            pool_counts = bot.get_pool_counts()
+            was_last_email = pool_counts['emails']['main'] == 0
 
         command = f"{info['link']},{number},{EXP_MONTH}/{EXP_YEAR},{cvv},{ZIP_CODE},{email}"
 
@@ -800,12 +807,12 @@ def setup(bot: commands.Bot):
                 tip_amount=info['tip'],
                 card_used=card if card_source == "pool" else None,
                 email_used=email if email_source == "pool" else None,
-                additional_data={"parsed_fields": info, "card_source": card_source, "email_source": email_source},
+                additional_data={"parsed_fields": info, "card_source": card_source, "email_source": email_source, "email_pool": email_pool_used},
             )
 
         embed = discord.Embed(title="Wool Order", color=0xff6600)
         embed.add_field(name="", value=f"```{command}```", inline=False)
-        embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
+        embed.add_field(name="**Email used:**", value=f"```{email} ({email_pool_used})```", inline=False)
         if is_valid_field(info['name']):
             formatted = format_name_csv(info['name'])
             embed.add_field(name="Name:", value=f"```{formatted}```", inline=False)
@@ -814,15 +821,128 @@ def setup(bot: commands.Bot):
         if is_valid_field(info['notes']):
             embed.add_field(name="Delivery Notes:", value=f"```{info['notes']}```", inline=False)
         embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
-        card_count, email_count = bot.get_pool_counts()
+        pool_counts = bot.get_pool_counts()
+        card_count = pool_counts['cards']
         warnings = []
         if was_last_card and card_source == "pool":
             warnings.append("⚠️ Card pool empty!")
         if was_last_email and email_source == "pool":
-            warnings.append("⚠️ Email pool empty!")
-        footer_parts = [f"Cards: {card_count}", f"Emails: {email_count}"]
+            warnings.append("⚠️ Main email pool empty!")
+        footer_parts = [f"Cards: {card_count}"]
+        for pool_name, email_count in pool_counts['emails'].items():
+            footer_parts.append(f"{pool_name}: {email_count}")
         footer_parts.extend(warnings)
         embed.set_footer(text=" | ".join(footer_parts))
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name='pump_order', description='Format a Pump order with pump pool email')
+    @app_commands.describe(
+        pool="Pump email pool to use (default: pump_20off25)",
+        custom_email="Optional: Use custom email (bypasses pool)",
+        card_number="Optional: Use custom card number (bypasses pool)",
+        card_cvv="Optional: CVV for custom card (required if card_number provided)",
+    )
+    @app_commands.choices(pool=[
+        app_commands.Choice(name='Pump 20off25', value='pump_20off25'),
+        app_commands.Choice(name='Pump 25off', value='pump_25off'),
+    ])
+    async def pump_order(interaction: discord.Interaction, pool: app_commands.Choice[str] = None,
+                        custom_email: str = None, card_number: str = None, card_cvv: str = None):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ You are not authorized.", ephemeral=True)
+
+        if card_number and not card_cvv:
+            return await interaction.response.send_message("❌ CVV required when using custom card number.", ephemeral=True)
+        if card_cvv and not card_number:
+            return await interaction.response.send_message("❌ Card number required when using custom CVV.", ephemeral=True)
+
+        embed = await fetch_ticket_embed(interaction.channel)
+        if embed is None:
+            return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
+
+        info = parse_fields(embed)
+
+        # Handle card
+        was_last_card = False
+        if card_number and card_cvv:
+            number, cvv = card_number, card_cvv
+            card = (number, cvv)
+            card_source = "custom"
+        else:
+            card_result = bot.get_and_remove_card()
+            if card_result is None:
+                return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
+            if len(card_result) == 3:
+                number, cvv, was_last_card = card_result
+                card = (number, cvv)
+            else:
+                card = card_result
+                was_last_card = False
+            card_source = "pool"
+
+        # Handle email with pump pool logic
+        was_last_email = False
+        email_pool_used = pool.value if pool else 'pump_20off25'  # Default to pump_20off25
+        
+        if custom_email:
+            email = custom_email
+            email_source = "custom"
+            email_pool_used = "custom"
+        else:
+            try:
+                email_result = bot.get_and_remove_email(email_pool_used)
+                if email_result is None:
+                    return await interaction.response.send_message(f"❌ {email_pool_used} email pool is empty.", ephemeral=True)
+                email = email_result
+                email_source = "pool"
+                pool_counts = bot.get_pool_counts()
+                was_last_email = pool_counts['emails'][email_pool_used] == 0
+            except ValueError as e:
+                return await interaction.response.send_message(f"❌ {str(e)}", ephemeral=True)
+
+        # Generate pump order command in format: /qc checkout_details:link,card,mm/yy,cvv,zip,email
+        command = f"/qc checkout_details:{info['link']},{number},{EXP_MONTH}/{EXP_YEAR},{cvv},{ZIP_CODE},{email}"
+
+        if card_source == "pool" or email_source == "pool":
+            log_command_output(
+                command_type="pump_order",
+                user_id=interaction.user.id,
+                username=str(interaction.user),
+                channel_id=interaction.channel.id,
+                guild_id=interaction.guild.id if interaction.guild else None,
+                command_output=command,
+                tip_amount=info['tip'],
+                card_used=card if card_source == "pool" else None,
+                email_used=email if email_source == "pool" else None,
+                additional_data={"parsed_fields": info, "card_source": card_source, "email_source": email_source, "email_pool": email_pool_used},
+            )
+
+        embed = discord.Embed(title="Pump Order", color=0x9932cc)
+        embed.add_field(name="", value=f"```{command}```", inline=False)
+        embed.add_field(name="**Email used:**", value=f"```{email} ({email_pool_used})```", inline=False)
+        if is_valid_field(info['name']):
+            formatted = format_name_csv(info['name'])
+            embed.add_field(name="Name:", value=f"```{formatted}```", inline=False)
+        if is_valid_field(info['addr2']):
+            embed.add_field(name="Apt / Suite / Floor:", value=f"```{info['addr2']}```", inline=False)
+        if is_valid_field(info['notes']):
+            embed.add_field(name="Delivery Notes:", value=f"```{info['notes']}```", inline=False)
+        embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
+        
+        pool_counts = bot.get_pool_counts()
+        card_count = pool_counts['cards']
+        warnings = []
+        if was_last_card and card_source == "pool":
+            warnings.append("⚠️ Card pool empty!")
+        if was_last_email and email_source == "pool":
+            warnings.append(f"⚠️ {email_pool_used} pool empty!")
+        
+        footer_parts = [f"Cards: {card_count}"]
+        for pool_name, email_count in pool_counts['emails'].items():
+            footer_parts.append(f"{pool_name}: {email_count}")
+        footer_parts.extend(warnings)
+        embed.set_footer(text=" | ".join(footer_parts))
+        
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name='payments', description='Display payment methods')
