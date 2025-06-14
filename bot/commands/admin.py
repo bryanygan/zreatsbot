@@ -256,28 +256,15 @@ def setup(bot: commands.Bot):
         except Exception as e:
             await interaction.response.send_message(f"❌ Error processing file: {str(e)}", ephemeral=True)
 
-    @bot.tree.command(name='bulk_emails', description='(Admin) Add multiple emails from a text file to specified pool')
-    @app_commands.describe(
-        file="Text file with one email per line",
-        pool="Email pool to add emails to (main, pump_20off25, pump_25off)"
-    )
-    @app_commands.choices(pool=[
-        app_commands.Choice(name='Main Pool', value='main'),
-        app_commands.Choice(name='Pump 20off25', value='pump_20off25'),
-        app_commands.Choice(name='Pump 25off', value='pump_25off'),
-    ])
-    async def bulk_emails(interaction: discord.Interaction, file: discord.Attachment, pool: app_commands.Choice[str] = None):
-        if not owner_only(interaction):
-            return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
-
+    async def _process_bulk_emails(interaction: discord.Interaction, file: discord.Attachment, pool_type: str):
+        """Helper function to process bulk email uploads for any pool"""
+        
         if not file.filename.endswith('.txt'):
             return await interaction.response.send_message("❌ Please upload a .txt file.", ephemeral=True)
 
         if file.size > 1024 * 1024:
             return await interaction.response.send_message("❌ File too large. Maximum size is 1MB.", ephemeral=True)
 
-        pool_type = pool.value if pool else 'main'  # Default to main pool if not specified
-        
         try:
             file_content = await file.read()
             text_content = file_content.decode('utf-8')
@@ -329,7 +316,6 @@ def setup(bot: commands.Bot):
                     else:
                         duplicate_count += 1
                 except ValueError as e:
-                    # Invalid pool type - should not happen with choices, but handle gracefully
                     return await interaction.response.send_message(f"❌ {str(e)}", ephemeral=True)
 
             success_msg = f"✅ Successfully added {added_count} emails to **{pool_type}** pool."
@@ -342,6 +328,27 @@ def setup(bot: commands.Bot):
             await interaction.response.send_message("❌ Could not read file. Please ensure it's a valid UTF-8 text file.", ephemeral=True)
         except Exception as e:
             await interaction.response.send_message(f"❌ Error processing file: {str(e)}", ephemeral=True)
+
+    @bot.tree.command(name='bulk_emails_main', description='(Admin) Add multiple emails to main pool from text file')
+    async def bulk_emails_main(interaction: discord.Interaction, file: discord.Attachment):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
+        
+        await _process_bulk_emails(interaction, file, 'main')
+
+    @bot.tree.command(name='bulk_emails_pump20', description='(Admin) Add multiple emails to pump_20off25 pool from text file')
+    async def bulk_emails_pump20(interaction: discord.Interaction, file: discord.Attachment):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
+        
+        await _process_bulk_emails(interaction, file, 'pump_20off25')
+
+    @bot.tree.command(name='bulk_emails_pump25', description='(Admin) Add multiple emails to pump_25off pool from text file')
+    async def bulk_emails_pump25(interaction: discord.Interaction, file: discord.Attachment):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
+        
+        await _process_bulk_emails(interaction, file, 'pump_25off')
 
     @bot.tree.command(name='remove_card', description='(Admin) Remove a card from the pool')
     async def remove_card(interaction: discord.Interaction, number: str, cvv: str):
