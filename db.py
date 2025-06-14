@@ -42,7 +42,7 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    # Table for storing cards: card number and CVV
+    # Table for storing cards: card number and CVV (unchanged)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS cards (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,13 +51,22 @@ def init_db():
         )
     ''')
 
-    # Table for storing emails
+    # Updated table for storing emails with pool support
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS emails (
-            id    INTEGER PRIMARY KEY AUTOINCREMENT,
-            email TEXT    NOT NULL
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            email     TEXT    NOT NULL,
+            pool_type TEXT    NOT NULL DEFAULT 'main'
         )
     ''')
+
+    # Migrate existing emails to main pool if no pool_type column exists
+    try:
+        cursor.execute("SELECT pool_type FROM emails LIMIT 1")
+    except sqlite3.OperationalError:
+        # Column doesn't exist, add it and set existing emails to 'main'
+        cursor.execute("ALTER TABLE emails ADD COLUMN pool_type TEXT NOT NULL DEFAULT 'main'")
+        cursor.execute("UPDATE emails SET pool_type = 'main' WHERE pool_type IS NULL OR pool_type = ''")
 
     conn.commit()
     conn.close()
@@ -252,6 +261,24 @@ def get_all_emails_with_pools():
     cursor.execute("SELECT email, pool_type FROM emails ORDER BY pool_type, id")
     return cursor.fetchall()
 
+def get_and_remove_card():
+    """
+    Fetch the oldest card (by id) from the pool and remove it from the database.
+    Returns:
+        tuple: (card_number, cvv) if available, or None if no cards left.
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute('SELECT id, number, cvv FROM cards ORDER BY id LIMIT 1')
+    row = cursor.fetchone()
+    if not row:
+        return None
+
+    card_id, number, cvv = row
+    cursor.execute('DELETE FROM cards WHERE id = ?', (card_id,))
+    conn.commit()
+    return number, cvv
 
 # Legacy function for backward compatibility
 def get_and_remove_email_legacy():
