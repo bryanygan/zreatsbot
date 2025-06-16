@@ -114,12 +114,61 @@ def parse_fields(embed: discord.Embed) -> dict:
     }
 
 def parse_webhook_fields(embed: discord.Embed) -> dict:
-    """Parse fields from webhook order embeds (both tracking and checkout types)"""
+    """Parse fields from webhook order embeds (tracking, checkout, and order placement types)"""
     data = {field.name: field.value for field in embed.fields}
     tracking_url = getattr(embed, "url", None) or getattr(getattr(embed, "author", None), "url", "")
     
+    # Handle "Order Successfully Placed" format (Pump)
+    if (embed.title and "Order Successfully Placed" in embed.title) or \
+       any("Order link" in field_name for field_name in data.keys()):
+        
+        # Extract tracking URL from Order link field or embed URL
+        order_link = ""
+        for field_name, field_value in data.items():
+            if "Order link" in field_name or "order link" in field_name.lower():
+                # The field value might contain a clickable link, extract the URL
+                import re
+                url_match = re.search(r'https://[^\s\)]+', field_value)
+                if url_match:
+                    order_link = url_match.group(0)
+                break
+        
+        if not order_link and tracking_url:
+            order_link = tracking_url.strip()
+        
+        # Extract store name from Restaurant field or embed description
+        store = data.get('Restaurant', '').strip()
+        if not store:
+            # Try to extract from description if it mentions the store
+            if embed.description and "Your order from" in embed.description:
+                import re
+                store_match = re.search(r'Your order from\s+\*\*([^*]+)\*\*', embed.description)
+                if store_match:
+                    store = store_match.group(1).strip()
+        
+        # Extract delivery time from estimated delivery time in description
+        eta = 'N/A'
+        if embed.description and "Estimated delivery time:" in embed.description:
+            import re
+            eta_match = re.search(r'Estimated delivery time:\s*\*\*([^*]+)\*\*', embed.description)
+            if eta_match:
+                eta = eta_match.group(1).strip()
+        
+        return {
+            'store': store or 'Unknown Store',
+            'eta': eta,
+            'name': data.get('Customer', '').strip(),
+            'address': data.get('Delivery Address', '').strip(),
+            'items': data.get('Order Items', '').strip(),
+            'tracking': order_link,
+            'phone': data.get('Phone', '').strip(),
+            'payment': data.get('Email', '').strip(),
+            'total': data.get('Total', '').strip(),
+            'type': 'order_placed'
+        }
+    
     # Handle tracking webhook format (Store, Name, Delivery Address)
-    if 'Store' in data and 'Estimated Arrival' in data:
+    elif 'Store' in data and 'Estimated Arrival' in data:
         return {
             'store': data.get('Store', '').strip(),
             'eta': data.get('Estimated Arrival', '').strip(),
@@ -521,3 +570,41 @@ def convert_24h_to_12h(time_text):
     converted_text = re.sub(pattern, convert_single_time, time_text)
     
     return converted_text
+
+def detect_webhook_type(embed, field_names):
+    """
+    Detect the type of webhook embed
+    Returns: (is_webhook, webhook_type_name)
+    """
+    
+    # Check for "Order Successfully Placed" format (UberEats order confirmations)
+    is_order_placed = (
+        (embed.title and "Order Successfully Placed" in embed.title) or
+        any("Order link" in field_name or "order link" in field_name.lower() for field_name in field_names) or
+        any("Customer" in field_name for field_name in field_names)
+    )
+    
+    # Check for tracking webhook (Store, Name, Delivery Address)
+    is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
+    
+    # Check for checkout webhook - comprehensive detection
+    is_checkout = (
+        "Account Email" in field_names or 
+        "Delivery Information" in field_names or
+        "Items In Bag" in field_names or
+        (embed.title and "Checkout Successful" in embed.title) or
+        (embed.description and "Checkout Successful" in embed.description) or
+        ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
+        # Description-based checkout webhooks (like stewardess)
+        (len(embed.fields) == 0 and embed.description and 
+        any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
+    )
+    
+    if is_order_placed:
+        return True, "order_placed"
+    elif is_tracking:
+        return True, "tracking"
+    elif is_checkout:
+        return True, "checkout"
+    else:
+        return False, "unknown"

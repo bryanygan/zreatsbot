@@ -19,6 +19,7 @@ from ..utils.helpers import (
     owner_only,
     find_matching_webhook_data,
     convert_24h_to_12h,
+    detect_webhook_type,
 )
 from ..utils.card_validator import CardValidator
 from ..utils.channel_status import rename_history
@@ -160,6 +161,9 @@ def setup(bot: commands.Bot):
             for message in messages_to_check:
                 if message.embeds:
                     for i, embed in enumerate(message.embeds):
+                        field_names = {f.name for f in embed.fields}
+                        is_webhook, webhook_type = detect_webhook_type(embed, field_names)
+                        
                         analysis = {
                             'message_id': message.id,
                             'embed_index': i,
@@ -172,23 +176,13 @@ def setup(bot: commands.Bot):
                             'field_names': [f.name for f in embed.fields],
                             'field_values_preview': {f.name: (f.value or '')[:100] + ('...' if f.value and len(f.value) > 100 else '') for f in embed.fields[:5]},
                             'color': embed.color,
-                            'url': embed.url
+                            'url': embed.url,
+                            'detected_webhook': is_webhook,
+                            'detected_type': webhook_type
                         }
                         
-                        # Test detection logic
-                        field_names = set(f.name for f in embed.fields)
-                        analysis['is_tracking'] = {"Store", "Name", "Delivery Address"}.issubset(field_names)
-                        analysis['is_checkout'] = (
-                            "Account Email" in field_names or 
-                            "Delivery Information" in field_names or
-                            "Items In Bag" in field_names or
-                            (embed.title and "Checkout Successful" in embed.title) or
-                            (embed.description and "Checkout Successful" in embed.description) or
-                            ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"]))
-                        )
-                        
                         # Test parsing if it's detected as a webhook
-                        if analysis['is_tracking'] or analysis['is_checkout']:
+                        if is_webhook:
                             try:
                                 parsed_data = helpers.parse_webhook_fields(embed)
                                 analysis['parsed_data'] = parsed_data
@@ -211,7 +205,7 @@ def setup(bot: commands.Bot):
                            inline=False)
             
             embed.add_field(name='Detection Results',
-                           value=f'**Is Tracking**: {analysis["is_tracking"]}\n**Is Checkout**: {analysis["is_checkout"]}',
+                           value=f'**Detected Webhook**: {analysis["detected_webhook"]}\n**Detected Type**: {analysis["detected_type"]}',
                            inline=False)
             
             embed.add_field(name='Field Names',
@@ -236,8 +230,17 @@ def setup(bot: commands.Bot):
         summary = f'📊 **Embed Analysis Summary**\n\n'
         summary += f'**Total Embeds Analyzed**: {len(embeds_analyzed)}\n'
         summary += f'**Webhook Messages**: {sum(1 for a in embeds_analyzed if a["is_webhook"])}\n'
-        summary += f'**Detected as Tracking**: {sum(1 for a in embeds_analyzed if a["is_tracking"])}\n'
-        summary += f'**Detected as Checkout**: {sum(1 for a in embeds_analyzed if a["is_checkout"])}\n'
+        summary += f'**Detected Webhooks**: {sum(1 for a in embeds_analyzed if a["detected_webhook"])}\n'
+        
+        # Count by type
+        type_counts = {}
+        for a in embeds_analyzed:
+            if a["detected_webhook"]:
+                webhook_type = a["detected_type"]
+                type_counts[webhook_type] = type_counts.get(webhook_type, 0) + 1
+        
+        if type_counts:
+            summary += f'**By Type**: {", ".join([f"{t}: {c}" for t, c in type_counts.items()])}\n'
         
         if len(embeds_analyzed) > 2:
             summary += f'\n*Showing detailed analysis for first 2 embeds only*'
@@ -262,40 +265,18 @@ def setup(bot: commands.Bot):
             return await interaction.response.send_message('❌ Message has no embeds.', ephemeral=True)
         
         for i, embed in enumerate(message.embeds):
-            field_names = set(f.name for f in embed.fields)
+            field_names = {f.name for f in embed.fields}
             
-            # Manual step-by-step detection
-            has_webhook_id = bool(message.webhook_id)
-            has_store_name_delivery = {"Store", "Name", "Delivery Address"}.issubset(field_names)
-            has_account_email = "Account Email" in field_names
-            has_delivery_info = "Delivery Information" in field_names
-            has_items_in_bag = "Items In Bag" in field_names
-            has_checkout_title = embed.title and "Checkout Successful" in embed.title
-            has_checkout_desc = embed.description and "Checkout Successful" in embed.description
-            has_store_and_account = "Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])
-            
-            is_tracking = has_store_name_delivery
-            is_checkout = (has_account_email or has_delivery_info or has_items_in_bag or 
-                          has_checkout_title or has_checkout_desc or has_store_and_account)
+            # Use the new detection function
+            is_webhook, webhook_type = detect_webhook_type(embed, field_names)
             
             results.append({
                 'embed_index': i,
                 'field_names': list(field_names),
-                'has_webhook_id': has_webhook_id,
-                'detection_checks': {
-                    'Store + Name + Delivery Address': has_store_name_delivery,
-                    'Account Email': has_account_email,
-                    'Delivery Information': has_delivery_info,
-                    'Items In Bag': has_items_in_bag,
-                    'Checkout in Title': has_checkout_title,
-                    'Checkout in Description': has_checkout_desc,
-                    'Store + Account Fields': has_store_and_account
-                },
-                'final_detection': {
-                    'is_tracking': is_tracking,
-                    'is_checkout': is_checkout,
-                    'would_process': has_webhook_id and (is_tracking or is_checkout)
-                }
+                'has_webhook_id': bool(message.webhook_id),
+                'detected_webhook': is_webhook,
+                'detected_type': webhook_type,
+                'would_process': bool(message.webhook_id) and is_webhook
             })
         
         embed_response = discord.Embed(title=f'Message Detection Analysis: {message_id}', color=0x00FFFF)
@@ -304,15 +285,14 @@ def setup(bot: commands.Bot):
                                 inline=False)
         
         for result in results:
-            checks = '\n'.join([f'• {check}: {"✅" if passed else "❌"}' for check, passed in result['detection_checks'].items()])
-            final = result['final_detection']
-            
             embed_response.add_field(
                 name=f'Embed {result["embed_index"]} Analysis',
-                value=f'**Field Names**: {", ".join(result["field_names"][:5])}...\n\n**Detection Checks**:\n{checks}\n\n**Final Results**:\n• Tracking: {"✅" if final["is_tracking"] else "❌"}\n• Checkout: {"✅" if final["is_checkout"] else "❌"}\n• **Would Process**: {"✅" if final["would_process"] else "❌"}',
+                value=f'**Field Names**: {", ".join(result["field_names"][:5])}{"..." if len(result["field_names"]) > 5 else ""}\n\n**Detection Results**:\n• Detected Webhook: {"✅" if result["detected_webhook"] else "❌"}\n• Type: {result["detected_type"]}\n• **Would Process**: {"✅" if result["would_process"] else "❌"}',
                 inline=False
             )
         
+        await interaction.response.send_message(embed=embed_response, ephemeral=True)
+
     @bot.tree.command(name='simple_embed_debug', description='Simple embed debugging without fetching messages')
     async def simple_embed_debug(interaction: discord.Interaction, search_limit: int = 10):
         """Simple embed debugging that just looks at message history"""
@@ -327,23 +307,14 @@ def setup(bot: commands.Bot):
                 if message.embeds:
                     for i, embed in enumerate(message.embeds):
                         try:
-                            field_names = [f.name for f in embed.fields]
-                            field_names_set = set(field_names)
+                            field_names = {f.name for f in embed.fields}
                             
                             # Safe access to properties
                             title = getattr(embed, 'title', None) or ''
                             description = getattr(embed, 'description', None) or ''
                             
-                            # Test detection logic safely
-                            is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names_set)
-                            is_checkout = (
-                                "Account Email" in field_names_set or 
-                                "Delivery Information" in field_names_set or
-                                "Items In Bag" in field_names_set or
-                                ("Checkout Successful" in title) or
-                                ("Checkout Successful" in description) or
-                                ("Store" in field_names_set and any(x in field_names_set for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"]))
-                            )
+                            # Use the new detection function
+                            is_webhook, webhook_type = detect_webhook_type(embed, field_names)
                             
                             results.append({
                                 'message_id': message.id,
@@ -354,10 +325,10 @@ def setup(bot: commands.Bot):
                                 'title': title[:100] + ('...' if len(title) > 100 else ''),
                                 'description': description[:100] + ('...' if len(description) > 100 else ''),
                                 'field_count': len(embed.fields),
-                                'field_names': field_names,
-                                'is_tracking': is_tracking,
-                                'is_checkout': is_checkout,
-                                'would_process': bool(getattr(message, 'webhook_id', None)) and (is_tracking or is_checkout)
+                                'field_names': [f.name for f in embed.fields],
+                                'detected_webhook': is_webhook,
+                                'detected_type': webhook_type,
+                                'would_process': bool(getattr(message, 'webhook_id', None)) and is_webhook
                             })
                         except Exception as e:
                             results.append({
@@ -375,14 +346,24 @@ def setup(bot: commands.Bot):
         # Create summary
         total_embeds = len(results)
         webhook_embeds = sum(1 for r in results if r.get('is_webhook', False))
-        tracking_detected = sum(1 for r in results if r.get('is_tracking', False))
-        checkout_detected = sum(1 for r in results if r.get('is_checkout', False))
+        detected_webhooks = sum(1 for r in results if r.get('detected_webhook', False))
         would_process = sum(1 for r in results if r.get('would_process', False))
+        
+        # Count by type
+        type_counts = {}
+        for r in results:
+            if r.get('detected_webhook', False):
+                webhook_type = r.get('detected_type', 'unknown')
+                type_counts[webhook_type] = type_counts.get(webhook_type, 0) + 1
         
         summary_embed = discord.Embed(title='Simple Embed Debug Results', color=0x00FF00)
         summary_embed.add_field(name='Summary', 
-                               value=f'**Total Embeds**: {total_embeds}\n**Webhook Embeds**: {webhook_embeds}\n**Tracking Detected**: {tracking_detected}\n**Checkout Detected**: {checkout_detected}\n**Would Process**: {would_process}',
+                               value=f'**Total Embeds**: {total_embeds}\n**Webhook Embeds**: {webhook_embeds}\n**Detected Webhooks**: {detected_webhooks}\n**Would Process**: {would_process}',
                                inline=False)
+        
+        if type_counts:
+            type_summary = ', '.join([f'{t}: {c}' for t, c in type_counts.items()])
+            summary_embed.add_field(name='Detected Types', value=type_summary, inline=False)
         
         # Show details for first few embeds
         for result in results[:5]:
@@ -396,7 +377,7 @@ def setup(bot: commands.Bot):
                 
                 summary_embed.add_field(
                     name=f'Message {result["message_id"]} (Embed {result["embed_index"]})',
-                    value=f'**Webhook**: {"✅" if result["is_webhook"] else "❌"}\n**Author**: {result["author_name"]}\n**Title**: {result["title"] or "None"}\n**Fields**: {field_names_str}\n**Tracking**: {"✅" if result["is_tracking"] else "❌"}\n**Checkout**: {"✅" if result["is_checkout"] else "❌"}\n**Would Process**: {"✅" if result["would_process"] else "❌"}',
+                    value=f'**Webhook**: {"✅" if result["is_webhook"] else "❌"}\n**Author**: {result["author_name"]}\n**Title**: {result["title"] or "None"}\n**Fields**: {field_names_str}\n**Detected**: {"✅" if result["detected_webhook"] else "❌"} ({result["detected_type"]})\n**Would Process**: {"✅" if result["would_process"] else "❌"}',
                     inline=False
                 )
         
@@ -622,10 +603,11 @@ def setup(bot: commands.Bot):
             embed = found_message.embeds[0]  # First embed
             
             # Get all the raw data
-            field_names = [f.name for f in embed.fields]
-            field_names_set = set(field_names)
+            field_names = {f.name for f in embed.fields}
             
-            # Manual detection step by step
+            # Use the new detection function
+            is_webhook, webhook_type = detect_webhook_type(embed, field_names)
+            
             detection_results = {
                 'has_webhook_id': bool(found_message.webhook_id),
                 'webhook_id': found_message.webhook_id,
@@ -634,50 +616,16 @@ def setup(bot: commands.Bot):
                 'description': embed.description,
                 'description_preview': (embed.description or '')[:500] + ('...' if embed.description and len(embed.description) > 500 else ''),
                 'field_count': len(embed.fields),
-                'field_names': field_names,
-                
-                # Tracking detection
-                'has_store': 'Store' in field_names_set,
-                'has_name': 'Name' in field_names_set,
-                'has_delivery_address': 'Delivery Address' in field_names_set,
-                'is_tracking': {'Store', 'Name', 'Delivery Address'}.issubset(field_names_set),
-                
-                # Checkout detection - each condition separately
-                'has_account_email_field': 'Account Email' in field_names_set,
-                'has_delivery_info_field': 'Delivery Information' in field_names_set,
-                'has_items_in_bag_field': 'Items In Bag' in field_names_set,
-                'checkout_in_title': embed.title and 'Checkout Successful' in embed.title,
-                'checkout_in_desc': embed.description and 'Checkout Successful' in embed.description,
-                'has_store_field': 'Store' in field_names_set,
-                'has_account_phone_field': 'Account Phone' in field_names_set,
-                'store_plus_account': 'Store' in field_names_set and any(x in field_names_set for x in ['Account Email', 'Account Phone', 'Delivery Information', 'Items In Bag']),
-                
-                # New description-based detection
-                'zero_fields': len(embed.fields) == 0,
-                'has_description': bool(embed.description),
-                'store_in_desc': embed.description and '**Store**:' in embed.description,
-                'account_email_in_desc': embed.description and '**Account Email**:' in embed.description,
-                'delivery_info_in_desc': embed.description and '**Delivery Information**:' in embed.description,
-                'items_in_bag_in_desc': embed.description and '**Items In Bag**:' in embed.description,
-                'desc_based_checkout': (len(embed.fields) == 0 and embed.description and 
-                                       any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
+                'field_names': list(field_names),
+                'detected_webhook': is_webhook,
+                'detected_type': webhook_type,
+                'would_process': bool(found_message.webhook_id) and is_webhook
             }
             
-            # Calculate final checkout detection
-            detection_results['is_checkout'] = (
-                detection_results['has_account_email_field'] or
-                detection_results['has_delivery_info_field'] or 
-                detection_results['has_items_in_bag_field'] or
-                detection_results['checkout_in_title'] or
-                detection_results['checkout_in_desc'] or
-                detection_results['store_plus_account'] or
-                detection_results['desc_based_checkout']
-            )
-            
-            # Test parsing if detected as checkout
+            # Test parsing if detected as webhook
             parsed_data = None
             parsing_error = None
-            if detection_results['is_checkout']:
+            if is_webhook:
                 try:
                     parsed_data = helpers.parse_webhook_fields(embed)
                 except Exception as e:
@@ -689,7 +637,7 @@ def setup(bot: commands.Bot):
             # Basic info
             debug_embed.add_field(
                 name='Basic Info',
-                value=f'**Webhook ID**: {detection_results["webhook_id"]}\n**Author**: {detection_results["author"]}\n**Title**: {detection_results["title"] or "None"}\n**Field Count**: {detection_results["field_count"]}\n**Has Description**: {detection_results["has_description"]}',
+                value=f'**Webhook ID**: {detection_results["webhook_id"]}\n**Author**: {detection_results["author"]}\n**Title**: {detection_results["title"] or "None"}\n**Field Count**: {detection_results["field_count"]}\n**Has Description**: {bool(detection_results["description"])}',
                 inline=False
             )
             
@@ -709,18 +657,8 @@ def setup(bot: commands.Bot):
             )
             
             # Detection results
-            tracking_checks = f'• Store field: {"✅" if detection_results["has_store"] else "❌"}\n• Name field: {"✅" if detection_results["has_name"] else "❌"}\n• Delivery Address field: {"✅" if detection_results["has_delivery_address"] else "❌"}'
-            
-            field_checkout_checks = f'• Account Email field: {"✅" if detection_results["has_account_email_field"] else "❌"}\n• Delivery Info field: {"✅" if detection_results["has_delivery_info_field"] else "❌"}\n• Items In Bag field: {"✅" if detection_results["has_items_in_bag_field"] else "❌"}\n• Store + Account: {"✅" if detection_results["store_plus_account"] else "❌"}'
-            
-            desc_checkout_checks = f'• Zero fields: {"✅" if detection_results["zero_fields"] else "❌"}\n• Store: in desc: {"✅" if detection_results["store_in_desc"] else "❌"}\n• Account Email: in desc: {"✅" if detection_results["account_email_in_desc"] else "❌"}\n• Delivery Info: in desc: {"✅" if detection_results["delivery_info_in_desc"] else "❌"}\n• Items In Bag: in desc: {"✅" if detection_results["items_in_bag_in_desc"] else "❌"}\n• **Desc-based checkout**: {"✅" if detection_results["desc_based_checkout"] else "❌"}'
-            
-            debug_embed.add_field(name='Tracking Checks', value=tracking_checks, inline=True)
-            debug_embed.add_field(name='Field-based Checkout', value=field_checkout_checks, inline=True)
-            debug_embed.add_field(name='Description-based Checkout', value=desc_checkout_checks, inline=False)
-            
-            debug_embed.add_field(name='Final Results', 
-                                 value=f'**Is Tracking**: {"✅" if detection_results["is_tracking"] else "❌"}\n**Is Checkout**: {"✅" if detection_results["is_checkout"] else "❌"}',
+            debug_embed.add_field(name='Detection Results', 
+                                 value=f'**Detected Webhook**: {"✅" if detection_results["detected_webhook"] else "❌"}\n**Type**: {detection_results["detected_type"]}\n**Would Process**: {"✅" if detection_results["would_process"] else "❌"}',
                                  inline=False)
             
             # Show parsing results
@@ -732,8 +670,8 @@ def setup(bot: commands.Bot):
                 )
             elif parsing_error:
                 debug_embed.add_field(name='Parsing Error', value=parsing_error, inline=False)
-            elif detection_results['is_checkout']:
-                debug_embed.add_field(name='Parsing', value='Detected as checkout but no parsing attempted', inline=False)
+            elif detection_results['detected_webhook']:
+                debug_embed.add_field(name='Parsing', value='Detected as webhook but no parsing attempted', inline=False)
             
             await interaction.response.send_message(embed=debug_embed, ephemeral=True)
             
@@ -990,6 +928,9 @@ def setup(bot: commands.Bot):
         found_webhooks = 0
         cached_webhooks = 0
         updated_webhooks = 0
+        order_placed_webhooks = 0
+        tracking_webhooks = 0
+        checkout_webhooks = 0
         
         try:
             async for message in tracking_channel.history(limit=scan_limit):
@@ -997,24 +938,18 @@ def setup(bot: commands.Bot):
                     for embed in message.embeds:
                         field_names = {f.name for f in embed.fields}
                         
-                        # Check for tracking webhook (Store, Name, Delivery Address)
-                        is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
+                        # Use the new detection function
+                        is_webhook, webhook_type = detect_webhook_type(embed, field_names)
                         
-                        # Check for checkout webhook - comprehensive detection
-                        is_checkout = (
-                            "Account Email" in field_names or 
-                            "Delivery Information" in field_names or
-                            "Items In Bag" in field_names or
-                            (embed.title and "Checkout Successful" in embed.title) or
-                            (embed.description and "Checkout Successful" in embed.description) or
-                            ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
-                            # Description-based checkout webhooks (like stewardess)
-                            (len(embed.fields) == 0 and embed.description and 
-                            any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
-                        )
-                        
-                        if is_tracking or is_checkout:
+                        if is_webhook:
                             found_webhooks += 1
+                            
+                            if webhook_type == "order_placed":
+                                order_placed_webhooks += 1
+                            elif webhook_type == "tracking":
+                                tracking_webhooks += 1
+                            elif webhook_type == "checkout":
+                                checkout_webhooks += 1
                             
                             try:
                                 webhook_data = helpers.parse_webhook_fields(embed)
@@ -1037,7 +972,8 @@ def setup(bot: commands.Bot):
             data = helpers.find_latest_matching_webhook_data(ticket_name)
             
             if data:
-                await interaction.followup.send(f'✅ Found matching webhook! Scanned {scan_limit} messages, found {found_webhooks} webhooks ({cached_webhooks} new, {updated_webhooks} existing).', ephemeral=True)
+                type_summary = f"{order_placed_webhooks} order_placed, {tracking_webhooks} tracking, {checkout_webhooks} checkout"
+                await interaction.followup.send(f'✅ Found matching webhook! Scanned {scan_limit} messages, found {found_webhooks} webhooks ({type_summary}). New: {cached_webhooks}, existing: {updated_webhooks}.', ephemeral=True)
             else:
                 # No match - show detailed debug info
                 cache_keys = []
@@ -1070,6 +1006,39 @@ def setup(bot: commands.Bot):
             e.add_field(name='Name', value=data.get('name'), inline=False)
             e.add_field(name='Delivery Address', value=data.get('address'), inline=False)
             e.set_footer(text='Watch the tracking link for updates!')
+
+        elif webhook_type == 'order_placed':
+            # Handle "Order Successfully Placed" format
+            e = discord.Embed(title='🎉 Order Successfully Placed!', url=data.get('tracking'), color=0x00ff00)
+            
+            if tracking_url:
+                tracking_text = f"Your order has been successfully placed!\n\n**🔗 Order Details**\n[Click here]({tracking_url})"
+                e.add_field(name='', value=tracking_text, inline=False)
+            
+            e.add_field(name='Store', value=data.get('store'), inline=False)
+            
+            # Add estimated delivery time if available
+            eta_value = data.get('eta')
+            if eta_value and eta_value != 'N/A':
+                e.add_field(name='Estimated Delivery Time', value=eta_value, inline=False)
+            
+            # Add order items
+            if data.get('items'):
+                e.add_field(name='Order Items', value=data.get('items'), inline=False)
+            
+            # Add customer name
+            e.add_field(name='Customer', value=data.get('name'), inline=False)
+            
+            # Add delivery address
+            if data.get('address'):
+                e.add_field(name='Delivery Address', value=data.get('address'), inline=False)
+            
+            # Add total if available
+            if data.get('total'):
+                e.add_field(name='Total', value=data.get('total'), inline=False)
+            
+            e.set_footer(text='Check the order link for real-time updates!')
+
         else:  # checkout or unknown
             e = discord.Embed(title='Checkout Successful!', url=data.get('tracking'), color=0x00ff00)
             
@@ -1089,7 +1058,6 @@ def setup(bot: commands.Bot):
             e.set_footer(text='Watch the tracking link for updates!')
 
         await interaction.followup.send(embed=e)
-
 
     @bot.tree.command(name='debug_tracking', description='Debug webhook lookup')
     async def debug_tracking(
@@ -1194,6 +1162,8 @@ def setup(bot: commands.Bot):
         status_msg = f'Detailed debug for ticket embed search (checked {search_limit} messages)'
         if debug_channel:
             await debug_channel.send(status_msg)
+        
+        await interaction.response.send_message(embed=debug, ephemeral=True)
 
     @bot.tree.command(name='scan_webhooks', description='Scan tracking channel for webhook orders')
     async def scan_webhooks(interaction: discord.Interaction, channel_id: str = None, search_limit: int = 50):
@@ -1220,6 +1190,7 @@ def setup(bot: commands.Bot):
         found_webhooks = 0
         cached_webhooks = 0
         updated_webhooks = 0
+        order_placed_webhooks = 0
         tracking_webhooks = 0
         checkout_webhooks = 0
         processed_messages = 0
@@ -1253,28 +1224,17 @@ def setup(bot: commands.Bot):
                         try:
                             field_names = {f.name for f in embed.fields}
                             
-                            # Check for tracking webhook (Store, Name, Delivery Address)
-                            is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
+                            # Use the new detection function
+                            is_webhook, webhook_type = detect_webhook_type(embed, field_names)
                             
-                            # Check for checkout webhook - also check description for embedded content
-                            is_checkout = (
-                                "Account Email" in field_names or 
-                                "Delivery Information" in field_names or
-                                "Items In Bag" in field_names or
-                                (embed.title and "Checkout Successful" in embed.title) or
-                                (embed.description and "Checkout Successful" in embed.description) or
-                                ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
-                                # New check for description-based checkout webhooks
-                                (len(embed.fields) == 0 and embed.description and 
-                                any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
-                            )
-                            
-                            if is_tracking or is_checkout:
+                            if is_webhook:
                                 found_webhooks += 1
                                 
-                                if is_tracking:
+                                if webhook_type == "order_placed":
+                                    order_placed_webhooks += 1
+                                elif webhook_type == "tracking":
                                     tracking_webhooks += 1
-                                elif is_checkout:
+                                elif webhook_type == "checkout":
                                     checkout_webhooks += 1
                                 
                                 data = helpers.parse_webhook_fields(embed)
@@ -1304,6 +1264,7 @@ def setup(bot: commands.Bot):
         embed.add_field(name='Channel Scanned', value=target_channel.mention, inline=False)
         embed.add_field(name='Messages Searched', value=str(processed_messages), inline=False)
         embed.add_field(name='Total Webhook Orders Found', value=str(found_webhooks), inline=False)
+        embed.add_field(name='├─ Order Placed Webhooks', value=str(order_placed_webhooks), inline=True)
         embed.add_field(name='├─ Tracking Webhooks', value=str(tracking_webhooks), inline=True)
         embed.add_field(name='└─ Checkout Webhooks', value=str(checkout_webhooks), inline=True)
         embed.add_field(name='New Entries Cached', value=str(cached_webhooks), inline=False)
@@ -1342,55 +1303,54 @@ def setup(bot: commands.Bot):
         if errors and len(errors) <= 10:
             error_text = '\n'.join(errors[:10])
             await interaction.followup.send(f'⚠️ **Parsing Errors:**\n```\n{error_text}\n```', ephemeral=True)
-            
-            # If there were errors, send them in a separate message
-            if errors and len(errors) <= 10:
-                error_text = '\n'.join(errors[:10])
-                await interaction.followup.send(f'⚠️ **Parsing Errors:**\n```\n{error_text}\n```', ephemeral=True)
 
-        @bot.tree.command(name='check_cache', description='Show current webhook cache contents')
-        async def check_cache(interaction: discord.Interaction):
-            """Show what's currently in the webhook cache"""
-            
-            if not owner_only(interaction):
-                return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
-            
-            if not helpers.ORDER_WEBHOOK_CACHE:
-                return await interaction.response.send_message('📭 Webhook cache is empty.', ephemeral=True)
-            
-            embed = discord.Embed(title='Webhook Cache Contents', color=0x0099FF)
-            embed.add_field(name='Total Entries', value=str(len(helpers.ORDER_WEBHOOK_CACHE)), inline=False)
-            
-            # Count by type
-            tracking_count = sum(1 for data in helpers.ORDER_WEBHOOK_CACHE.values() if data.get('type') == 'tracking')
-            checkout_count = sum(1 for data in helpers.ORDER_WEBHOOK_CACHE.values() if data.get('type') == 'checkout')
-            unknown_count = len(helpers.ORDER_WEBHOOK_CACHE) - tracking_count - checkout_count
-            
-            type_summary = []
-            if tracking_count > 0:
-                type_summary.append(f"Tracking: {tracking_count}")
-            if checkout_count > 0:
-                type_summary.append(f"Checkout: {checkout_count}")
-            if unknown_count > 0:
-                type_summary.append(f"Unknown: {unknown_count}")
-            
-            if type_summary:
-                embed.add_field(name='By Type', value=' | '.join(type_summary), inline=False)
-            
-            cache_entries = []
-            for (name, addr), data in helpers.ORDER_WEBHOOK_CACHE.items():
-                store = data.get('store', 'Unknown')
-                webhook_type = data.get('type', 'unknown')
-                cache_entries.append(f"**{name}** → {store} `[{webhook_type}]`")
-            
-            # Show up to 10 entries
-            if len(cache_entries) <= 10:
-                embed.add_field(name='All Cached Orders', value='\n'.join(cache_entries), inline=False)
-            else:
-                embed.add_field(name='Recent 10 Cached Orders', value='\n'.join(cache_entries[-10:]), inline=False)
-                embed.add_field(name='Note', value=f'Showing last 10 of {len(cache_entries)} total entries', inline=False)
-            
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+    @bot.tree.command(name='check_cache', description='Show current webhook cache contents')
+    async def check_cache(interaction: discord.Interaction):
+        """Show what's currently in the webhook cache"""
+        
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+        
+        if not helpers.ORDER_WEBHOOK_CACHE:
+            return await interaction.response.send_message('📭 Webhook cache is empty.', ephemeral=True)
+        
+        embed = discord.Embed(title='Webhook Cache Contents', color=0x0099FF)
+        embed.add_field(name='Total Entries', value=str(len(helpers.ORDER_WEBHOOK_CACHE)), inline=False)
+        
+        # Count by type
+        order_placed_count = sum(1 for cache_entry in helpers.ORDER_WEBHOOK_CACHE.values() if cache_entry['data'].get('type') == 'order_placed')
+        tracking_count = sum(1 for cache_entry in helpers.ORDER_WEBHOOK_CACHE.values() if cache_entry['data'].get('type') == 'tracking')
+        checkout_count = sum(1 for cache_entry in helpers.ORDER_WEBHOOK_CACHE.values() if cache_entry['data'].get('type') == 'checkout')
+        unknown_count = len(helpers.ORDER_WEBHOOK_CACHE) - order_placed_count - tracking_count - checkout_count
+        
+        type_summary = []
+        if order_placed_count > 0:
+            type_summary.append(f"Order Placed: {order_placed_count}")
+        if tracking_count > 0:
+            type_summary.append(f"Tracking: {tracking_count}")
+        if checkout_count > 0:
+            type_summary.append(f"Checkout: {checkout_count}")
+        if unknown_count > 0:
+            type_summary.append(f"Unknown: {unknown_count}")
+        
+        if type_summary:
+            embed.add_field(name='By Type', value=' | '.join(type_summary), inline=False)
+        
+        cache_entries = []
+        for (name, addr), cache_entry in helpers.ORDER_WEBHOOK_CACHE.items():
+            data = cache_entry['data']
+            store = data.get('store', 'Unknown')
+            webhook_type = data.get('type', 'unknown')
+            cache_entries.append(f"**{name}** → {store} `[{webhook_type}]`")
+        
+        # Show up to 10 entries
+        if len(cache_entries) <= 10:
+            embed.add_field(name='All Cached Orders', value='\n'.join(cache_entries), inline=False)
+        else:
+            embed.add_field(name='Recent 10 Cached Orders', value='\n'.join(cache_entries[-10:]), inline=False)
+            embed.add_field(name='Note', value=f'Showing last 10 of {len(cache_entries)} total entries', inline=False)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name='find_ticket', description='Search for ticket embed in channel')
     async def find_ticket(interaction: discord.Interaction, search_limit: int = 100):
@@ -1439,6 +1399,8 @@ def setup(bot: commands.Bot):
                 inline=False
             )
         
+        await interaction.response.send_message(embed=debug, ephemeral=True)
+
     @bot.tree.command(name='test_webhook_parsing', description='Test webhook parsing on recent messages')
     async def test_webhook_parsing(interaction: discord.Interaction, search_limit: int = 10):
         """Test webhook parsing to see what data is extracted"""
@@ -1452,20 +1414,12 @@ def setup(bot: commands.Bot):
             async for message in interaction.channel.history(limit=search_limit):
                 if message.webhook_id and message.embeds:
                     for i, embed in enumerate(message.embeds):
-                        field_names = [f.name for f in embed.fields]
+                        field_names = {f.name for f in embed.fields}
                         
-                        # Test if this could be a webhook we care about
-                        is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
-                        is_checkout = (
-                            "Account Email" in field_names or 
-                            "Delivery Information" in field_names or
-                            "Items In Bag" in field_names or
-                            (embed.title and "Checkout Successful" in embed.title) or
-                            (embed.description and "Checkout Successful" in embed.description) or
-                            any("Store" in name and "Account" in str(field_names) for name in field_names)
-                        )
+                        # Use the new detection function
+                        is_webhook, webhook_type = detect_webhook_type(embed, field_names)
                         
-                        if is_tracking or is_checkout:
+                        if is_webhook:
                             # Parse the webhook
                             parsed_data = helpers.parse_webhook_fields(embed)
                             
@@ -1474,7 +1428,8 @@ def setup(bot: commands.Bot):
                                 'embed_index': i,
                                 'title': embed.title or 'No Title',
                                 'description': (embed.description or '')[:100] + ('...' if embed.description and len(embed.description) > 100 else ''),
-                                'field_names': field_names,
+                                'field_names': list(field_names),
+                                'detected_type': webhook_type,
                                 'parsed_name': parsed_data.get('name', 'None'),
                                 'parsed_store': parsed_data.get('store', 'None'),
                                 'parsed_type': parsed_data.get('type', 'None'),
@@ -1490,9 +1445,19 @@ def setup(bot: commands.Bot):
         embed.add_field(name='Messages Searched', value=str(search_limit), inline=False)
         embed.add_field(name='Webhook Embeds Found', value=str(len(results)), inline=False)
         
+        # Count by type
+        type_counts = {}
+        for result in results:
+            webhook_type = result['detected_type']
+            type_counts[webhook_type] = type_counts.get(webhook_type, 0) + 1
+        
+        if type_counts:
+            type_summary = ', '.join([f'{t}: {c}' for t, c in type_counts.items()])
+            embed.add_field(name='By Type', value=type_summary, inline=False)
+        
         for i, result in enumerate(results[:3], 1):  # Show first 3 results
             embed.add_field(
-                name=f'Webhook {i}: {result["title"]}',
+                name=f'Webhook {i}: {result["title"]} ({result["detected_type"]})',
                 value=f'**Type**: {result["parsed_type"]}\n**Name**: {result["parsed_name"]}\n**Store**: {result["parsed_store"]}\n**Address**: {result["parsed_address"]}\n**Fields**: {", ".join(result["field_names"][:3])}...',
                 inline=False
             )

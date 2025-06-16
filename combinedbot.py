@@ -157,16 +157,7 @@ class CombinedBot(commands.Bot):
 def main():
     bot = CombinedBot()
 
-    @bot.event
-    async def on_ready():
-        print(f"✅ Logged in as {bot.user} (ID: {bot.user.id})")
-        bot.add_view(PaymentView())
-        await bot.change_presence(status=discord.Status.invisible)
-        try:
-            synced = await bot.tree.sync()
-            print(f"Synced {len(synced)} commands")
-        except Exception as e:
-            print(f"Failed to sync commands: {e}")
+    # Update your on_message event in combinedbot.py:
 
     @bot.event
     async def on_message(message):
@@ -188,29 +179,18 @@ def main():
                 await message.add_reaction("❌")
                 await message.channel.send(f"{message.author.mention} ❌ {error}", delete_after=10)
 
-        # Improved webhook order processing - matches all detection patterns
+        # Enhanced webhook order processing - detects all order confirmation formats
         if message.webhook_id and message.embeds:
             for embed in message.embeds:
                 # Check if this looks like an order confirmation embed
                 field_names = {f.name for f in embed.fields}
                 
                 # Check for tracking webhook (Store, Name, Delivery Address)
-                is_tracking = {"Store", "Name", "Delivery Address"}.issubset(field_names)
+                field_names = {f.name for f in embed.fields}
+                is_webhook, webhook_type = helpers.detect_webhook_type(embed, field_names)
+
                 
-                # Check for checkout webhook - comprehensive detection
-                is_checkout = (
-                    "Account Email" in field_names or 
-                    "Delivery Information" in field_names or
-                    "Items In Bag" in field_names or
-                    (embed.title and "Checkout Successful" in embed.title) or
-                    (embed.description and "Checkout Successful" in embed.description) or
-                    ("Store" in field_names and any(x in field_names for x in ["Account Email", "Account Phone", "Delivery Information", "Items In Bag"])) or
-                    # Description-based checkout webhooks (like stewardess)
-                    (len(embed.fields) == 0 and embed.description and 
-                    any(x in embed.description for x in ['**Store**:', '**Account Email**:', '**Delivery Information**:', '**Items In Bag**:']))
-                )
-                
-                if is_tracking or is_checkout:
+                if is_webhook:
                     try:
                         data = helpers.parse_webhook_fields(embed)
                         
