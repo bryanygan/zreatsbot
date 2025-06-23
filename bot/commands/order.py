@@ -560,7 +560,7 @@ def setup(bot: commands.Bot):
 
         embed = discord.Embed(title="Fusion Order", color=0x0099ff)
         embed.add_field(name="", value=f"```{command}```", inline=False)
-        embed.add_field(name="**Email used:**", value=f"```{email} ({email_pool_used})```", inline=False)
+        embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
         embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
         pool_counts = bot.get_pool_counts()
         card_count = pool_counts['cards']
@@ -750,7 +750,7 @@ def setup(bot: commands.Bot):
 
         embed = discord.Embed(title="Wool Order", color=0xff6600)
         embed.add_field(name="", value=f"```{command}```", inline=False)
-        embed.add_field(name="**Email used:**", value=f"```{email} ({email_pool_used})```", inline=False)
+        embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
         if is_valid_field(info['name']):
             formatted = format_name_csv(info['name'])
             embed.add_field(name="Name:", value=f"```{formatted}```", inline=False)
