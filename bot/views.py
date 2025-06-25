@@ -33,6 +33,14 @@ class PaymentView(View):
         embed.add_field(name="📝 Note:", value="Friends & Family, no notes", inline=False)
         view = CopyablePaymentView("paypal")
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+    
+    @discord.ui.button(label='CashApp', style=ButtonStyle.success, emoji='💵', custom_id='payment_cashapp')
+    async def cashapp_button(self, interaction: discord.Interaction, button: Button):
+        embed = discord.Embed(title="💵 CashApp Payment", color=0x00D632)
+        embed.add_field(name="CashTag:", value="```$bygan```", inline=False)
+        embed.add_field(name="📝 Note:", value="Must be from balance, no notes, emoji is fine", inline=False)
+        view = CopyablePaymentView("cashapp")
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @discord.ui.button(label='Crypto', style=ButtonStyle.secondary, emoji='🪙', custom_id='payment_crypto')
     async def crypto_button(self, interaction: discord.Interaction, button: Button):
