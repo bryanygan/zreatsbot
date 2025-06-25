@@ -64,6 +64,8 @@ class CopyablePaymentView(View):
             message = """@BGHype"""
         elif self.payment_type == "paypal":
             message = """ganbryanbts@gmail.com"""
+        elif self.payment_type == "cashapp":
+            message = """$bygan"""
         elif self.payment_type == "crypto":
             message = """**Crypto Payment Info:**\nAvailable: ETH, LTC, SOL, BTC, USDT, USDC\nNote: Message me for wallet addresses"""
         else:
