@@ -26,7 +26,7 @@ from ..utils.channel_status import rename_history
 from logging_utils import log_command_output
 import db
 
-EXP_MONTH = '06'
+EXP_MONTH = '07'
 EXP_YEAR = '30'
 ZIP_CODE = '19104'
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db')
