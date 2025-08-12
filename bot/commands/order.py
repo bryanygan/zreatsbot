@@ -1561,3 +1561,56 @@ def setup(bot: commands.Bot):
             embed.add_field(name='Note', value=f'Showing {entries_shown} of {len(sorted_entries)} entries (truncated due to Discord limits)', inline=False)
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @bot.tree.command(name='finished', description='Mark order as finished and move ticket')
+    async def finished(interaction: discord.Interaction):
+        """Move ticket to finished category and send completion message"""
+        
+        if not owner_only(interaction):
+            return await interaction.response.send_message('❌ You are not authorized.', ephemeral=True)
+        
+        # Category ID where tickets should be moved
+        FINISHED_CATEGORY_ID = 1355010691127447794
+        
+        # Get the current channel (ticket)
+        channel = interaction.channel
+        
+        # Ensure we're in a text channel
+        if not isinstance(channel, discord.TextChannel):
+            return await interaction.response.send_message('❌ This command can only be used in a text channel.', ephemeral=True)
+        
+        # Defer response since moving might take a moment
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            # Get the target category
+            target_category = interaction.guild.get_channel(FINISHED_CATEGORY_ID)
+            
+            if not target_category:
+                return await interaction.followup.send('❌ Could not find the finished tickets category.', ephemeral=True)
+            
+            if not isinstance(target_category, discord.CategoryChannel):
+                return await interaction.followup.send('❌ The specified ID is not a category.', ephemeral=True)
+            
+            # Move the channel to the new category
+            await channel.edit(category=target_category)
+            
+            # Create the completion embed
+            embed = discord.Embed(
+                title="Your food has been ordered! 🎉",
+                description="Watch the tracking link carefully for all updates! Once your food arrives, don't forget to leave a vouch in <#1350935336871792701> and feel free to close the ticket!",
+                color=0x00ff00  # Green color
+            )
+            
+            # Send the embed to the channel
+            await channel.send(embed=embed)
+            
+            # Confirm to the user who ran the command
+            await interaction.followup.send('✅ Ticket moved to finished category and completion message sent.', ephemeral=True)
+            
+        except discord.Forbidden:
+            await interaction.followup.send('❌ I don\'t have permission to move this channel or send messages.', ephemeral=True)
+        except discord.HTTPException as e:
+            await interaction.followup.send(f'❌ Failed to move channel: {str(e)}', ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f'❌ An unexpected error occurred: {str(e)}', ephemeral=True)
