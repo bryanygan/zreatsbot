@@ -102,7 +102,11 @@ class CombinedBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.guilds = True
-        super().__init__(command_prefix='!', intents=intents)
+        super().__init__(
+            command_prefix='!', 
+            intents=intents,
+            status=discord.Status.invisible  # Makes bot appear offline
+        )
         self.init_database()
 
     def init_database(self):
@@ -156,6 +160,20 @@ class CombinedBot(commands.Bot):
 
 def main():
     bot = CombinedBot()
+
+    @bot.event
+    async def on_ready():
+        # Ensure bot stays invisible
+        await bot.change_presence(status=discord.Status.invisible)
+        
+        print(f'🤖 {bot.user} has connected to Discord (invisible)')
+        
+        # Sync slash commands
+        try:
+            synced = await bot.tree.sync()
+            print(f"✅ Synced {len(synced)} command(s)")
+        except Exception as e:
+            print(f"❌ Failed to sync commands: {e}")
 
     # Update your on_message event in combinedbot.py:
 
