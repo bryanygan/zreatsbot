@@ -90,9 +90,9 @@ OPENER_CHANNEL_ID = int(os.getenv('OPENER_CHANNEL_ID')) if os.getenv('OPENER_CHA
 ROLE_PING_ID = os.getenv('ROLE_PING_ID', '1352022044614590494')
 ORDER_CHANNEL_MENTION = os.getenv('ORDER_CHANNEL_MENTION', '<#1350935337269985334>')
 
-EXP_MONTH = '06'
+EXP_MONTH = '08'
 EXP_YEAR = '30'
-ZIP_CODE = '19104'
+ZIP_CODE = '07724'
 
 DB_PATH = Path(__file__).parent / 'data' / 'pool.db'
 
