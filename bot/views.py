@@ -2,10 +2,29 @@ import discord
 from discord.ui import View, Button
 from discord import ButtonStyle
 
+# Global variable to control CashApp button visibility
+CASHAPP_ENABLED = True
+
+def set_cashapp_enabled(enabled: bool):
+    """Set the CashApp button visibility"""
+    global CASHAPP_ENABLED
+    CASHAPP_ENABLED = enabled
+
+def is_cashapp_enabled():
+    """Check if CashApp button is enabled"""
+    return CASHAPP_ENABLED
+
 
 class PaymentView(View):
     def __init__(self):
         super().__init__(timeout=None)
+        
+        # Dynamically add/remove CashApp button based on setting
+        if not is_cashapp_enabled():
+            # Remove the CashApp button if it exists
+            for item in self.children[:]:
+                if hasattr(item, 'custom_id') and item.custom_id == 'payment_cashapp':
+                    self.remove_item(item)
 
     @discord.ui.button(label='Zelle', style=ButtonStyle.danger, emoji='🏦', custom_id='payment_zelle')
     async def zelle_button(self, interaction: discord.Interaction, button: Button):

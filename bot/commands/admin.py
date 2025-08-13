@@ -89,7 +89,29 @@ def setup(bot: commands.Bot):
 
         lines = [f"{num},{cvv}" for num, cvv in rows]
         payload = "Cards in pool:\n" + "\n".join(lines)
-        await interaction.response.send_message(f"```{payload}```", ephemeral=True)
+        
+        # Check if the payload is too long
+        if len(payload) > 1900:
+            # Send as a file instead
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+                f.write(payload)
+                temp_file_path = f.name
+            
+            try:
+                with open(temp_file_path, 'rb') as f:
+                    discord_file = discord.File(f, filename="cards_pool.txt")
+                    await interaction.response.send_message(
+                        f"📄 **Cards in pool** ({len(rows)} cards - sent as file due to length)",
+                        file=discord_file,
+                        ephemeral=True
+                    )
+            finally:
+                try:
+                    os.unlink(temp_file_path)
+                except Exception:
+                    pass
+        else:
+            await interaction.response.send_message(f"```{payload}```", ephemeral=True)
 
     @bot.tree.command(name='read_emails', description='(Admin) List all emails in the specified pool')
     @app_commands.describe(pool="Email pool to read from (leave blank to see all pools)")
@@ -111,7 +133,29 @@ def setup(bot: commands.Bot):
                     return await interaction.response.send_message(f"✅ No emails in **{pool_type}** pool.", ephemeral=True)
                 
                 payload = f"Emails in **{pool_type}** pool ({len(emails)} total):\n" + "\n".join(emails)
-                await interaction.response.send_message(f"```{payload}```", ephemeral=True)
+                
+                # Check if the payload is too long
+                if len(payload) > 1900:
+                    # Send as a file instead
+                    with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8') as f:
+                        f.write(payload)
+                        temp_file_path = f.name
+                    
+                    try:
+                        with open(temp_file_path, 'rb') as f:
+                            discord_file = discord.File(f, filename=f"{pool_type}_emails.txt")
+                            await interaction.response.send_message(
+                                f"📄 **{pool_type} pool emails** ({len(emails)} emails - sent as file due to length)",
+                                file=discord_file,
+                                ephemeral=True
+                            )
+                    finally:
+                        try:
+                            os.unlink(temp_file_path)
+                        except Exception:
+                            pass
+                else:
+                    await interaction.response.send_message(f"```{payload}```", ephemeral=True)
             except ValueError as e:
                 await interaction.response.send_message(f"❌ {str(e)}", ephemeral=True)
         else:
@@ -174,6 +218,9 @@ def setup(bot: commands.Bot):
         if file.size > 1024 * 1024:
             return await interaction.response.send_message("❌ File too large. Maximum size is 1MB.", ephemeral=True)
 
+        # DEFER THE RESPONSE IMMEDIATELY to prevent timeout
+        await interaction.response.defer(ephemeral=True)
+
         try:
             file_content = await file.read()
             text_content = file_content.decode('utf-8')
@@ -217,10 +264,10 @@ def setup(bot: commands.Bot):
                 error_msg = "❌ Found invalid lines:\n" + "\n".join(invalid_lines[:10])
                 if len(invalid_lines) > 10:
                     error_msg += f"\n... and {len(invalid_lines) - 10} more errors"
-                return await interaction.response.send_message(error_msg, ephemeral=True)
+                return await interaction.followup.send(error_msg, ephemeral=True)
 
             if not cards_to_add:
-                return await interaction.response.send_message("❌ No valid cards found in the file.", ephemeral=True)
+                return await interaction.followup.send("❌ No valid cards found in the file.", ephemeral=True)
 
             conn = db.acquire_connection()
             cur = conn.cursor()
@@ -249,12 +296,12 @@ def setup(bot: commands.Bot):
             if duplicate_count > 0:
                 success_msg += f" ({duplicate_count} duplicates skipped)"
 
-            await interaction.response.send_message(success_msg, ephemeral=True)
+            await interaction.followup.send(success_msg, ephemeral=True)
 
         except UnicodeDecodeError:
-            await interaction.response.send_message("❌ Could not read file. Please ensure it's a valid UTF-8 text file.", ephemeral=True)
+            await interaction.followup.send("❌ Could not read file. Please ensure it's a valid UTF-8 text file.", ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message(f"❌ Error processing file: {str(e)}", ephemeral=True)
+            await interaction.followup.send(f"❌ Error processing file: {str(e)}", ephemeral=True)
 
     async def _process_bulk_emails(interaction: discord.Interaction, file: discord.Attachment, pool_type: str):
         """Helper function to process bulk email uploads for any pool"""
@@ -264,6 +311,9 @@ def setup(bot: commands.Bot):
 
         if file.size > 1024 * 1024:
             return await interaction.response.send_message("❌ File too large. Maximum size is 1MB.", ephemeral=True)
+
+        # DEFER THE RESPONSE IMMEDIATELY to prevent timeout
+        await interaction.response.defer(ephemeral=True)
 
         try:
             file_content = await file.read()
@@ -299,10 +349,10 @@ def setup(bot: commands.Bot):
                 error_msg = "❌ Found invalid lines:\n" + "\n".join(invalid_lines[:10])
                 if len(invalid_lines) > 10:
                     error_msg += f"\n... and {len(invalid_lines) - 10} more errors"
-                return await interaction.response.send_message(error_msg, ephemeral=True)
+                return await interaction.followup.send(error_msg, ephemeral=True)
 
             if not emails_to_add:
-                return await interaction.response.send_message("❌ No valid emails found in the file.", ephemeral=True)
+                return await interaction.followup.send("❌ No valid emails found in the file.", ephemeral=True)
 
             # Use the database function to add emails with proper pool handling
             added_count = 0
@@ -316,18 +366,18 @@ def setup(bot: commands.Bot):
                     else:
                         duplicate_count += 1
                 except ValueError as e:
-                    return await interaction.response.send_message(f"❌ {str(e)}", ephemeral=True)
+                    return await interaction.followup.send(f"❌ {str(e)}", ephemeral=True)
 
             success_msg = f"✅ Successfully added {added_count} emails to **{pool_type}** pool."
             if duplicate_count > 0:
                 success_msg += f" ({duplicate_count} duplicates skipped)"
 
-            await interaction.response.send_message(success_msg, ephemeral=True)
+            await interaction.followup.send(success_msg, ephemeral=True)
 
         except UnicodeDecodeError:
-            await interaction.response.send_message("❌ Could not read file. Please ensure it's a valid UTF-8 text file.", ephemeral=True)
+            await interaction.followup.send("❌ Could not read file. Please ensure it's a valid UTF-8 text file.", ephemeral=True)
         except Exception as e:
-            await interaction.response.send_message(f"❌ Error processing file: {str(e)}", ephemeral=True)
+            await interaction.followup.send(f"❌ Error processing file: {str(e)}", ephemeral=True)
 
     @bot.tree.command(name='bulk_emails_main', description='(Admin) Add multiple emails to main pool from text file')
     async def bulk_emails_main(interaction: discord.Interaction, file: discord.Attachment):
@@ -405,6 +455,219 @@ def setup(bot: commands.Bot):
                 await interaction.response.send_message(f"✅ Removed email `{email}` from all pools ({deleted} instances).", ephemeral=True)
             else:
                 await interaction.response.send_message("❌ No matching email found in any pool.", ephemeral=True)
+
+    @bot.tree.command(name='remove_bulk_cards', description='(Admin) Remove multiple cards from pool using text file')
+    async def remove_bulk_cards(interaction: discord.Interaction, file: discord.Attachment):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
+
+        if not file.filename.endswith('.txt'):
+            return await interaction.response.send_message("❌ Please upload a .txt file.", ephemeral=True)
+
+        if file.size > 1024 * 1024:
+            return await interaction.response.send_message("❌ File too large. Maximum size is 1MB.", ephemeral=True)
+
+        # DEFER THE RESPONSE IMMEDIATELY to prevent timeout
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            file_content = await file.read()
+            text_content = file_content.decode('utf-8')
+
+            lines = text_content.strip().split('\n')
+            cards_to_remove = []
+            invalid_lines = []
+
+            for i, line in enumerate(lines, 1):
+                line = line.strip()
+                if not line:
+                    continue
+
+                parts = line.split(',')
+                if len(parts) != 2:
+                    invalid_lines.append(f"Line {i}: '{line}' (expected format: cardnum,cvv)")
+                    continue
+
+                raw_number, raw_cvv = parts[0].strip(), parts[1].strip()
+
+                if not raw_number or not raw_cvv:
+                    invalid_lines.append(f"Line {i}: '{line}' (empty card number or CVV)")
+                    continue
+
+                # We still validate the format to ensure consistency
+                is_valid_card, card_error = CardValidator.validate_card_number(raw_number)
+                if not is_valid_card:
+                    invalid_lines.append(f"Line {i}: '{line}' - {card_error}")
+                    continue
+
+                is_valid_cvv, cvv_error = CardValidator.validate_cvv(raw_cvv, raw_number)
+                if not is_valid_cvv:
+                    invalid_lines.append(f"Line {i}: '{line}' - {cvv_error}")
+                    continue
+
+                cleaned_number = CardValidator.format_card_number(raw_number)
+                cleaned_cvv = raw_cvv.strip()
+
+                cards_to_remove.append((cleaned_number, cleaned_cvv))
+
+            if invalid_lines:
+                error_msg = "❌ Found invalid lines:\n" + "\n".join(invalid_lines[:10])
+                if len(invalid_lines) > 10:
+                    error_msg += f"\n... and {len(invalid_lines) - 10} more errors"
+                return await interaction.followup.send(error_msg, ephemeral=True)
+
+            if not cards_to_remove:
+                return await interaction.followup.send("❌ No valid cards found in the file.", ephemeral=True)
+
+            conn = db.acquire_connection()
+            cur = conn.cursor()
+
+            removed_count = 0
+            not_found_count = 0
+
+            for number, cvv in cards_to_remove:
+                cur.execute("DELETE FROM cards WHERE number = ? AND cvv = ?", (number, cvv))
+                if cur.rowcount > 0:
+                    removed_count += 1
+                else:
+                    not_found_count += 1
+
+            conn.commit()
+            db.release_connection(conn)
+
+            success_msg = f"✅ Successfully removed {removed_count} cards from the pool."
+            if not_found_count > 0:
+                success_msg += f" ({not_found_count} cards not found in pool)"
+
+            await interaction.followup.send(success_msg, ephemeral=True)
+
+        except UnicodeDecodeError:
+            await interaction.followup.send("❌ Could not read file. Please ensure it's a valid UTF-8 text file.", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error processing file: {str(e)}", ephemeral=True)
+
+    @bot.tree.command(name='remove_bulk_emails', description='(Admin) Remove multiple emails from pool using text file')
+    @app_commands.describe(
+        file="Text file containing emails to remove (one per line)",
+        pool="Email pool to remove from (leave blank to remove from all pools)"
+    )
+    @app_commands.choices(pool=[
+        app_commands.Choice(name='All Pools', value='all'),
+        app_commands.Choice(name='Main Pool', value='main'),
+        app_commands.Choice(name='Pump 20off25', value='pump_20off25'),
+        app_commands.Choice(name='Pump 25off', value='pump_25off'),
+    ])
+    async def remove_bulk_emails(interaction: discord.Interaction, file: discord.Attachment, 
+                                 pool: app_commands.Choice[str] = None):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
+
+        if not file.filename.endswith('.txt'):
+            return await interaction.response.send_message("❌ Please upload a .txt file.", ephemeral=True)
+
+        if file.size > 1024 * 1024:
+            return await interaction.response.send_message("❌ File too large. Maximum size is 1MB.", ephemeral=True)
+
+        # DEFER THE RESPONSE IMMEDIATELY to prevent timeout
+        await interaction.response.defer(ephemeral=True)
+
+        pool_type = pool.value if pool else 'all'
+
+        try:
+            file_content = await file.read()
+            text_content = file_content.decode('utf-8')
+
+            lines = text_content.strip().split('\n')
+            emails_to_remove = []
+            invalid_lines = []
+
+            for i, line in enumerate(lines, 1):
+                line = line.strip()
+                if not line:
+                    continue
+
+                email = line.strip()
+
+                if not email:
+                    invalid_lines.append(f"Line {i}: empty email")
+                    continue
+
+                if '@' not in email or len(email) < 5:
+                    invalid_lines.append(f"Line {i}: '{email}' (invalid email format)")
+                    continue
+
+                parts = email.split('@')
+                if len(parts) != 2 or not parts[0] or not parts[1] or '.' not in parts[1]:
+                    invalid_lines.append(f"Line {i}: '{email}' (invalid email format)")
+                    continue
+
+                emails_to_remove.append(email)
+
+            if invalid_lines:
+                error_msg = "❌ Found invalid lines:\n" + "\n".join(invalid_lines[:10])
+                if len(invalid_lines) > 10:
+                    error_msg += f"\n... and {len(invalid_lines) - 10} more errors"
+                return await interaction.followup.send(error_msg, ephemeral=True)
+
+            if not emails_to_remove:
+                return await interaction.followup.send("❌ No valid emails found in the file.", ephemeral=True)
+
+            conn = db.acquire_connection()
+            cur = conn.cursor()
+
+            removed_count = 0
+            not_found_count = 0
+            pool_breakdown = {}
+
+            if pool_type == 'all':
+                # Remove from all pools
+                for email in emails_to_remove:
+                    cur.execute("SELECT pool_type FROM emails WHERE email = ?", (email,))
+                    found_pools = cur.fetchall()
+                    
+                    if found_pools:
+                        for (found_pool,) in found_pools:
+                            if found_pool not in pool_breakdown:
+                                pool_breakdown[found_pool] = 0
+                            pool_breakdown[found_pool] += 1
+                        
+                        cur.execute("DELETE FROM emails WHERE email = ?", (email,))
+                        removed_count += cur.rowcount
+                    else:
+                        not_found_count += 1
+            else:
+                # Remove from specific pool
+                for email in emails_to_remove:
+                    cur.execute("DELETE FROM emails WHERE email = ? AND pool_type = ?", (email, pool_type))
+                    if cur.rowcount > 0:
+                        removed_count += 1
+                    else:
+                        not_found_count += 1
+
+            conn.commit()
+            db.release_connection(conn)
+
+            # Build success message
+            if pool_type == 'all':
+                success_msg = f"✅ Successfully removed {removed_count} emails from all pools."
+                if pool_breakdown:
+                    breakdown_str = ", ".join([f"{pool}: {count}" for pool, count in pool_breakdown.items()])
+                    success_msg += f"\n📊 Breakdown: {breakdown_str}"
+            else:
+                success_msg = f"✅ Successfully removed {removed_count} emails from **{pool_type}** pool."
+            
+            if not_found_count > 0:
+                if pool_type == 'all':
+                    success_msg += f"\n⚠️ {not_found_count} emails not found in any pool"
+                else:
+                    success_msg += f"\n⚠️ {not_found_count} emails not found in **{pool_type}** pool"
+
+            await interaction.followup.send(success_msg, ephemeral=True)
+
+        except UnicodeDecodeError:
+            await interaction.followup.send("❌ Could not read file. Please ensure it's a valid UTF-8 text file.", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error processing file: {str(e)}", ephemeral=True)
 
     @bot.tree.command(name='full_logs', description='(Admin) Print recent command logs with full email and command output')
     @app_commands.describe(count="Number of recent logs to retrieve (default: 5, max: 50)")
@@ -539,3 +802,41 @@ def setup(bot: commands.Bot):
             stats_text += f"\n**Date Range:** {stats['date_range']['start'][:10]} to {stats['date_range']['end'][:10]}"
 
         await interaction.response.send_message(stats_text, ephemeral=True)
+
+    @bot.tree.command(name='toggle_cashapp', description='(Admin) Enable or disable the CashApp payment button')
+    @app_commands.describe(enabled="True to show CashApp button, False to hide it")
+    async def toggle_cashapp(interaction: discord.Interaction, enabled: bool):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
+        
+        # Import the views module to access the toggle function
+        from ..views import set_cashapp_enabled, is_cashapp_enabled
+        
+        # Set the new state
+        set_cashapp_enabled(enabled)
+        
+        # Create response embed
+        status = "enabled" if enabled else "disabled"
+        color = 0x00D632 if enabled else 0xFF0000
+        
+        embed = discord.Embed(
+            title="💵 CashApp Button Toggle",
+            description=f"CashApp payment button has been **{status}**.",
+            color=color
+        )
+        
+        embed.add_field(
+            name="Current Status",
+            value=f"{'✅ Visible' if enabled else '❌ Hidden'}",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="Effect",
+            value="The change will apply to all new `/payments` commands.\nExisting payment messages will not be affected.",
+            inline=False
+        )
+        
+        embed.set_footer(text=f"Changed by {interaction.user}")
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
