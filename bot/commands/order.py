@@ -1614,3 +1614,62 @@ def setup(bot: commands.Bot):
             await interaction.followup.send(f'❌ Failed to move channel: {str(e)}', ephemeral=True)
         except Exception as e:
             await interaction.followup.send(f'❌ An unexpected error occurred: {str(e)}', ephemeral=True)
+    
+    @bot.tree.command(name='reorder', description='Format a reorder command with email only')
+    @app_commands.describe(
+        email="Email address to use for the reorder"
+    )
+    async def reorder(interaction: discord.Interaction, email: str):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ You are not authorized.", ephemeral=True)
+
+        embed = await fetch_ticket_embed(interaction.channel)
+        if embed is None:
+            return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
+
+        info = parse_fields(embed)
+        
+        # Build the reorder command
+        raw_name = info['name']
+        parts = [f"/reorder uber order_details:{info['link']},{email}"]
+        
+        # Add name override if valid
+        if is_valid_field(raw_name):
+            name = normalize_name(raw_name)
+            parts.append(f"override_name:{name}")
+        
+        # Handle delivery notes and dropoff preference
+        notes = info['notes'].strip()
+        if is_valid_field(notes):
+            if notes.lower() == 'meet at door':
+                parts.append("override_dropoff:Meet at Door")
+            else:
+                # Always add the notes
+                parts.append(f"override_notes:{notes}")
+                # If notes contain "leave", also set dropoff preference
+                if 'leave' in notes.lower():
+                    parts.append("override_dropoff:Leave at Door")
+
+        command = ' '.join(parts)
+
+        # Create response embed
+        embed = discord.Embed(title="Reorder Command", color=0xFF1493)
+        embed.add_field(name="", value=f"```{command}```", inline=False)
+        embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
+        embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
+        
+        # Log the command
+        log_command_output(
+            command_type="reorder",
+            user_id=interaction.user.id,
+            username=str(interaction.user),
+            channel_id=interaction.channel.id,
+            guild_id=interaction.guild.id if interaction.guild else None,
+            command_output=command,
+            tip_amount=info['tip'],
+            card_used=None,  # No card for reorder
+            email_used=email,
+            additional_data={"parsed_fields": info},
+        )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
