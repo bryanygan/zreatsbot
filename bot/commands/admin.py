@@ -1,6 +1,8 @@
 import os
 import sqlite3
 import tempfile
+import csv
+import io
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -207,13 +209,14 @@ def setup(bot: commands.Bot):
             else:
                 await interaction.response.send_message(f"```{payload}```", ephemeral=True)
 
-    @bot.tree.command(name='bulk_cards', description='(Admin) Add multiple cards from a text file')
+    @bot.tree.command(name='bulk_cards', description='(Admin) Add multiple cards from a text or CSV file')
     async def bulk_cards(interaction: discord.Interaction, file: discord.Attachment):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
 
-        if not file.filename.endswith('.txt'):
-            return await interaction.response.send_message("❌ Please upload a .txt file.", ephemeral=True)
+        # Check file extension - now supports both .txt and .csv
+        if not (file.filename.endswith('.txt') or file.filename.endswith('.csv')):
+            return await interaction.response.send_message("❌ Please upload a .txt or .csv file.", ephemeral=True)
 
         if file.size > 1024 * 1024:
             return await interaction.response.send_message("❌ File too large. Maximum size is 1MB.", ephemeral=True)
@@ -228,18 +231,46 @@ def setup(bot: commands.Bot):
             lines = text_content.strip().split('\n')
             cards_to_add = []
             invalid_lines = []
+            
+            # Detect if it's a CSV file
+            is_csv = file.filename.endswith('.csv')
 
             for i, line in enumerate(lines, 1):
                 line = line.strip()
                 if not line:
                     continue
+                
+                # Skip header row for CSV files
+                if is_csv and i == 1:
+                    # Check if it looks like a header row
+                    if 'Card Number' in line or 'card number' in line.lower():
+                        continue
 
-                parts = line.split(',')
-                if len(parts) != 2:
-                    invalid_lines.append(f"Line {i}: '{line}' (expected format: cardnum,cvv)")
-                    continue
+                if is_csv:
+                    # Parse CSV format
+                    # Split by comma but handle potential commas within quoted fields
+                    reader = csv.reader(io.StringIO(line))
+                    try:
+                        parts = next(reader)
+                    except:
+                        invalid_lines.append(f"Line {i}: '{line}' (invalid CSV format)")
+                        continue
+                    
+                    # Expected CSV format has card number at index 5 and CVV at index 8
+                    if len(parts) < 9:
+                        invalid_lines.append(f"Line {i}: '{line}' (insufficient columns for CSV format)")
+                        continue
+                    
+                    raw_number = parts[5].strip()  # Card Number column
+                    raw_cvv = parts[8].strip()     # Card CVV column
+                else:
+                    # Parse text format (original format: cardnum,cvv)
+                    parts = line.split(',')
+                    if len(parts) != 2:
+                        invalid_lines.append(f"Line {i}: '{line}' (expected format: cardnum,cvv)")
+                        continue
 
-                raw_number, raw_cvv = parts[0].strip(), parts[1].strip()
+                    raw_number, raw_cvv = parts[0].strip(), parts[1].strip()
 
                 if not raw_number or not raw_cvv:
                     invalid_lines.append(f"Line {i}: '{line}' (empty card number or CVV)")
