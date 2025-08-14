@@ -834,7 +834,85 @@ def setup(bot: commands.Bot):
 
         await interaction.response.send_message(stats_text, ephemeral=True)
 
-    @bot.tree.command(name='toggle_cashapp', description='(Admin) Enable or disable the CashApp payment button')
+    @bot.tree.command(name='toggle_payment', description='(Admin) Enable or disable any payment method button')
+    @app_commands.describe(
+        method="The payment method to toggle",
+        enabled="True to show the button, False to hide it"
+    )
+    @app_commands.choices(method=[
+        app_commands.Choice(name='Zelle', value='zelle'),
+        app_commands.Choice(name='Venmo', value='venmo'),
+        app_commands.Choice(name='PayPal', value='paypal'),
+        app_commands.Choice(name='CashApp', value='cashapp'),
+        app_commands.Choice(name='Crypto', value='crypto'),
+    ])
+    async def toggle_payment(interaction: discord.Interaction, method: app_commands.Choice[str], enabled: bool):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
+        
+        # Import the views module to access the toggle function
+        from ..views import set_payment_enabled, is_payment_enabled, get_payment_methods_status
+        
+        # Set the new state
+        success = set_payment_enabled(method.value, enabled)
+        
+        if not success:
+            return await interaction.response.send_message("❌ Invalid payment method.", ephemeral=True)
+        
+        # Create response embed
+        status = "enabled" if enabled else "disabled"
+        color = 0x00D632 if enabled else 0xFF0000
+        
+        # Get emoji for each payment method
+        emojis = {
+            'zelle': '🏦',
+            'venmo': '💙',
+            'paypal': '💚',
+            'cashapp': '💵',
+            'crypto': '🪙'
+        }
+        
+        embed = discord.Embed(
+            title=f"{emojis.get(method.value, '💳')} {method.name} Toggle",
+            description=f"{method.name} payment button has been **{status}**.",
+            color=color
+        )
+        
+        embed.add_field(
+            name="Current Status",
+            value=f"{'✅ Visible' if enabled else '❌ Hidden'}",
+            inline=False
+        )
+        
+        # Show status of all payment methods
+        all_status = get_payment_methods_status()
+        status_lines = []
+        for payment_method, is_enabled in all_status.items():
+            method_name = payment_method.capitalize()
+            if payment_method == 'cashapp':
+                method_name = 'CashApp'
+            elif payment_method == 'paypal':
+                method_name = 'PayPal'
+            status_icon = '✅' if is_enabled else '❌'
+            status_lines.append(f"{status_icon} {method_name}")
+        
+        embed.add_field(
+            name="All Payment Methods",
+            value="\n".join(status_lines),
+            inline=False
+        )
+        
+        embed.add_field(
+            name="Effect",
+            value="The change will apply to all new `/payments` commands.\nExisting payment messages will not be affected.",
+            inline=False
+        )
+        
+        embed.set_footer(text=f"Changed by {interaction.user}")
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name='toggle_cashapp', description='(Admin) Enable or disable the CashApp payment button (legacy)')
     @app_commands.describe(enabled="True to show CashApp button, False to hide it")
     async def toggle_cashapp(interaction: discord.Interaction, enabled: bool):
         if not owner_only(interaction):
@@ -852,7 +930,7 @@ def setup(bot: commands.Bot):
         
         embed = discord.Embed(
             title="💵 CashApp Button Toggle",
-            description=f"CashApp payment button has been **{status}**.",
+            description=f"CashApp payment button has been **{status}**.\n\n⚠️ **Note:** This command is legacy. Use `/toggle_payment` for more control.",
             color=color
         )
         

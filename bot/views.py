@@ -2,29 +2,64 @@ import discord
 from discord.ui import View, Button
 from discord import ButtonStyle
 
-# Global variable to control CashApp button visibility
+# Global variables to control payment method visibility
+PAYMENT_METHODS_ENABLED = {
+    'zelle': True,
+    'venmo': True,
+    'paypal': True,
+    'cashapp': True,
+    'crypto': True
+}
+
+def set_payment_enabled(method: str, enabled: bool):
+    """Set the payment method button visibility"""
+    global PAYMENT_METHODS_ENABLED
+    if method.lower() in PAYMENT_METHODS_ENABLED:
+        PAYMENT_METHODS_ENABLED[method.lower()] = enabled
+        return True
+    return False
+
+def is_payment_enabled(method: str):
+    """Check if payment method button is enabled"""
+    return PAYMENT_METHODS_ENABLED.get(method.lower(), True)
+
+def get_payment_methods_status():
+    """Get the status of all payment methods"""
+    return PAYMENT_METHODS_ENABLED.copy()
+
+# Legacy functions for backward compatibility
 CASHAPP_ENABLED = True
 
 def set_cashapp_enabled(enabled: bool):
-    """Set the CashApp button visibility"""
+    """Set the CashApp button visibility (legacy)"""
     global CASHAPP_ENABLED
     CASHAPP_ENABLED = enabled
+    set_payment_enabled('cashapp', enabled)
 
 def is_cashapp_enabled():
-    """Check if CashApp button is enabled"""
-    return CASHAPP_ENABLED
+    """Check if CashApp button is enabled (legacy)"""
+    return is_payment_enabled('cashapp')
 
 
 class PaymentView(View):
     def __init__(self):
         super().__init__(timeout=None)
         
-        # Dynamically add/remove CashApp button based on setting
-        if not is_cashapp_enabled():
-            # Remove the CashApp button if it exists
-            for item in self.children[:]:
-                if hasattr(item, 'custom_id') and item.custom_id == 'payment_cashapp':
-                    self.remove_item(item)
+        # Dynamically add/remove payment buttons based on settings
+        payment_ids = {
+            'zelle': 'payment_zelle',
+            'venmo': 'payment_venmo',
+            'paypal': 'payment_paypal',
+            'cashapp': 'payment_cashapp',
+            'crypto': 'payment_crypto'
+        }
+        
+        for method, custom_id in payment_ids.items():
+            if not is_payment_enabled(method):
+                # Remove the button if it's disabled
+                for item in self.children[:]:
+                    if hasattr(item, 'custom_id') and item.custom_id == custom_id:
+                        self.remove_item(item)
 
     @discord.ui.button(label='Zelle', style=ButtonStyle.danger, emoji='🏦', custom_id='payment_zelle')
     async def zelle_button(self, interaction: discord.Interaction, button: Button):
