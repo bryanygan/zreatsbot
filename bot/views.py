@@ -41,7 +41,7 @@ class PaymentView(View):
     async def venmo_button(self, interaction: discord.Interaction, button: Button):
         embed = discord.Embed(title="💙 Venmo Payment", color=0x008CFF)
         embed.add_field(name="Username:", value="```@BGHype```", inline=False)
-        embed.add_field(name="📝 Note:", value="Friends & Family, no notes, emoji is fine\nLast 4 digits: **0054** (if required)", inline=False)
+        embed.add_field(name="📝 Note:", value="Friends & Family, single emoji note only\nLast 4 digits: **0054** (if required)", inline=False)
         view = CopyablePaymentView("venmo")
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
@@ -57,7 +57,7 @@ class PaymentView(View):
     async def cashapp_button(self, interaction: discord.Interaction, button: Button):
         embed = discord.Embed(title="💵 CashApp Payment", color=0x00D632)
         embed.add_field(name="CashTag:", value="```$bygan```", inline=False)
-        embed.add_field(name="📝 Note:", value="Must be from balance, no notes, emoji is fine", inline=False)
+        embed.add_field(name="📝 Note:", value="Must be from balance, single emoji note only", inline=False)
         view = CopyablePaymentView("cashapp")
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
