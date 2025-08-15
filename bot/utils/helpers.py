@@ -4,7 +4,18 @@ from typing import Optional
 from datetime import datetime
 import re
 
+# Legacy support for OWNER_ID
 OWNER_ID = int(os.getenv('OWNER_ID')) if os.getenv('OWNER_ID') else None
+
+# Get authorized user IDs from environment variable
+AUTHORIZED_USER_IDS_STR = os.getenv('AUTHORIZED_USER_IDS', '')
+if AUTHORIZED_USER_IDS_STR:
+    AUTHORIZED_USER_IDS = [int(uid.strip()) for uid in AUTHORIZED_USER_IDS_STR.split(',') if uid.strip().isdigit()]
+elif OWNER_ID:
+    # Fallback to OWNER_ID if AUTHORIZED_USER_IDS not set
+    AUTHORIZED_USER_IDS = [OWNER_ID]
+else:
+    AUTHORIZED_USER_IDS = []
 
 # cache for parsed webhook orders keyed by (name, address)
 ORDER_WEBHOOK_CACHE = {}
@@ -474,6 +485,13 @@ def is_valid_field(value: str) -> bool:
     return bool(value and value.strip().lower() not in ('n/a', 'none'))
 
 def owner_only(interaction: discord.Interaction) -> bool:
+    """Check if the user is authorized to use admin commands.
+    
+    Checks against AUTHORIZED_USER_IDS list, with fallback to OWNER_ID for backwards compatibility.
+    """
+    if AUTHORIZED_USER_IDS:
+        return interaction.user.id in AUTHORIZED_USER_IDS
+    # Fallback to legacy OWNER_ID check
     return OWNER_ID and interaction.user.id == OWNER_ID
 
 def find_matching_webhook_data(name: str, address: str = '') -> dict:
