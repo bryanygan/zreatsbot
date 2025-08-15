@@ -887,7 +887,7 @@ def setup(bot: commands.Bot):
     async def payments(interaction: discord.Interaction):
         embed = discord.Embed(
             title="Prin's Payments",
-            description="Select which payment method you would like to use!",
+            description="Select which payment method you would like to use! (Zelle/Crypto is preferred)",
             color=0x9932cc,
         )
         view = PaymentView()
