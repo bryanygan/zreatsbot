@@ -1,10 +1,12 @@
 # Combined Discord Bot
 
 A unified Discord bot that combines multiple essential functionalities:
-1. **Order Command Generation** - Creates formatted commands for Fusion Assist, Fusion Order, and Wool Order with card/email pool management
+1. **Order Command Generation** - Creates formatted commands for Fusion Assist, Fusion Order, Wool Order, and Pump Order with advanced card/email pool management
 2. **Channel Management** - Opens/closes channels with rate limiting and announcements  
 3. **Webhook Order Tracking** - Automatically detects and caches order confirmations from delivery service webhooks
 4. **Advanced Debugging Tools** - Comprehensive debugging commands for troubleshooting webhook detection and embed parsing
+5. **Payment Management System** - Dynamic payment method toggles with interactive button displays
+6. **Multi-Pool Email System** - Separate email pools for different order types (main, pump_20off25, pump_25off)
 
 ## Features
 
@@ -12,9 +14,13 @@ A unified Discord bot that combines multiple essential functionalities:
 - **`/fusion_assist`** - Generate Fusion assist commands with Postmates/UberEats modes
 - **`/fusion_order`** - Generate Fusion order commands with email from pool
 - **`/wool_order`** - Generate Wool order commands
+- **`/pump_order`** - Generate Pump order commands with dedicated pump email pools
+- **`/reorder`** - Generate reorder commands with email only (Fusion/Stewardess, no card required)
+- **`/finished`** - Mark order as finished and move ticket to completed channel
 - **Automatic embed parsing** from ticket bots
 - **Order webhook tracking** - Use `/send_tracking` after a webhook posts to send tracking info to the ticket
 - **Card & Email pools** with SQLite storage
+- **Multi-pool email system** - Separate pools for different order types
 - **Comprehensive logging** to JSON, CSV, and TXT files
 - **Custom card/email support** - Use your own cards/emails without touching the pool
 - **Intelligent webhook caching** - Automatically detects and caches order confirmations from multiple webhook formats
@@ -41,13 +47,17 @@ A unified Discord bot that combines multiple essential functionalities:
 
 ### Admin Pool Management (Owner Only)
 - **`/add_card`** - Add single card to pool with validation
-- **`/add_email`** - Add single email to pool (with priority option)
-- **`/bulk_cards`** - Upload text file with multiple cards
-- **`/bulk_emails`** - Upload text file with multiple emails
+- **`/add_email`** - Add single email to specific pool (main, pump_20off25, pump_25off) with priority option
+- **`/bulk_cards`** - Upload text or CSV file with multiple cards (supports various CSV formats)
+- **`/bulk_emails_main`** - Upload text file with emails for main pool
+- **`/bulk_emails_pump20`** - Upload text file with emails for pump_20off25 pool
+- **`/bulk_emails_pump25`** - Upload text file with emails for pump_25off pool
 - **`/read_cards`** - View all cards in pool
-- **`/read_emails`** - View all emails in pool
+- **`/read_emails`** - View emails in specific pool or all pools
 - **`/remove_card`** - Remove specific card from pool
-- **`/remove_email`** - Remove specific email from pool
+- **`/remove_email`** - Remove specific email from any pool
+- **`/remove_bulk_cards`** - Remove multiple cards using text file
+- **`/remove_bulk_emails`** - Remove multiple emails from any pool using text file
 - **Card validation** - Luhn algorithm validation and CVV format checking
 
 ### Webhook & Order Tracking (Owner Only)
@@ -76,10 +86,14 @@ A unified Discord bot that combines multiple essential functionalities:
 
 ### Additional Features
 - **`/payments`** - Display payment methods with interactive buttons
+- **`/toggle_payment`** - Enable/disable specific payment method buttons (Zelle, Venmo, PayPal, CashApp, Crypto)
+- **`/toggle_cashapp`** - Legacy command for CashApp toggle (use `/toggle_payment` instead)
 - **`/wool_details`** - Show parsed Wool order details for verification
+- **Dynamic payment buttons** - Only show enabled payment methods
 - **Comprehensive error handling** with user-friendly messages
 - **Smart field validation** - Automatically handles N/A and empty fields
 - **Name normalization** - Consistent formatting for commands and matching
+- **Invisible bot status** - Bot appears offline for privacy
 
 ## Prerequisites
 
@@ -152,18 +166,25 @@ pytest
 #### Order Management
 - `/fusion_assist mode:UberEats email:custom@example.com card_number:1234... card_cvv:123` - Generate assist command with custom card/email
 - `/fusion_order custom_email:test@example.com` - Generate order command with custom email
-- `/wool_order` - Generate wool command
+- `/wool_order custom_email:test@example.com custom_card_number:1234... custom_card_cvv:123` - Generate wool command
+- `/pump_order custom_email:test@example.com custom_card_number:1234... custom_card_cvv:123 pool:pump_20off25` - Generate pump order with pump pool email
+- `/reorder custom_email:test@example.com` - Generate reorder command (email only)
+- `/finished` - Mark order as finished and move ticket to completed channel
 - `/send_tracking` - Send tracking info for current ticket using cached webhook data
 
 #### Pool Management
 - `/add_card number:1234567812345678 cvv:123` - Add single card with validation
-- `/add_email email:test@example.com top:True` - Add email (optionally to front)
-- `/bulk_cards` - Upload .txt file with cards (format: `cardnum,cvv` per line)
-- `/bulk_emails` - Upload .txt file with emails (one per line)
+- `/add_email email:test@example.com pool:main top:True` - Add email to specific pool (optionally to front)
+- `/bulk_cards` - Upload .txt or .csv file with cards (supports multiple CSV formats)
+- `/bulk_emails_main` - Upload .txt file with emails for main pool
+- `/bulk_emails_pump20` - Upload .txt file with emails for pump_20off25 pool
+- `/bulk_emails_pump25` - Upload .txt file with emails for pump_25off pool
 - `/read_cards` - View all cards
-- `/read_emails` - View all emails
+- `/read_emails pool:main` - View emails in specific pool or all pools
 - `/remove_card number:1234567812345678 cvv:123` - Remove card
-- `/remove_email email:test@example.com` - Remove email
+- `/remove_email email:test@example.com pool:main` - Remove email from specific pool
+- `/remove_bulk_cards` - Upload .txt file to remove multiple cards
+- `/remove_bulk_emails pool:main` - Upload .txt file to remove emails from specific pool
 
 #### Webhook & Tracking Management
 - `/scan_webhooks channel_id:123456789 search_limit:100` - Scan channel for webhook orders
@@ -188,6 +209,8 @@ pytest
 
 #### Utility Commands
 - `/payments` - Display payment method buttons
+- `/toggle_payment method:zelle enabled:false` - Enable/disable payment method buttons
+- `/toggle_cashapp enabled:false` - Legacy toggle for CashApp button
 - `/wool_details` - Show parsed Wool order details
 
 ## File Structure
@@ -230,20 +253,32 @@ combined-discord-bot/
 ## Bulk File Formats
 
 ### Cards (bulk_cards)
-Create a `.txt` file with one card per line:
+**Text format** - Create a `.txt` file with one card per line:
 ```
 1234567812345678,123
 9876543210987654,456
 5555444433332222,789
 ```
 
-### Emails (bulk_emails)
+**CSV format** - Upload a `.csv` file with card data:
+- Expects card number at column 6 (index 5)
+- Expects CVV at column 9 (index 8)
+- Automatically skips header rows
+- Made for AYCD CSV exports
+
+### Emails (bulk_emails_main, bulk_emails_pump20, bulk_emails_pump25)
 Create a `.txt` file with one email per line:
 ```
 user1@example.com
 user2@example.com
 user3@example.com
 ```
+
+Each bulk email command adds emails to its respective pool:
+- `bulk_emails_main` → main pool
+- `bulk_emails_pump20` → pump_20off25 pool  
+- `bulk_emails_pump25` → pump_25off pool
+- (Feel free to rename, this was when Pump was semi decent)
 
 ## Using Custom Cards/Emails
 
@@ -294,9 +329,9 @@ The bot automatically detects and caches order confirmations from delivery servi
 
 ### Pool Constants
 The following are hardcoded but can be modified in the source:
-- `EXP_MONTH = '06'` - Credit card expiration month
+- `EXP_MONTH = '08'` - Credit card expiration month
 - `EXP_YEAR = '30'` - Credit card expiration year
-- `ZIP_CODE = '19104'` - ZIP code for orders
+- `ZIP_CODE = '07724'` - ZIP code for orders
 
 ## Troubleshooting
 
@@ -356,15 +391,18 @@ For tracking issues:
 
 - All command responses are ephemeral (only visible to command user)
 - Only the configured `OWNER_ID` can execute admin commands
+- Bot runs in invisible status (appears offline) for privacy
 - Card numbers and emails are logged in full - secure your log files appropriately
 - Database files contain sensitive payment information - implement appropriate backups and security
 - Consider rotating cards/emails regularly and removing old entries
 - Card digits 9-16 are logged for traceability while maintaining some security
+- Multiple email pools allow for separation of different order types
+- Payment methods can be dynamically enabled/disabled without code changes
 
 ## Advanced Usage
 
 ### Custom Card Expiration
-Update the constants in the source file:
+Update the constants in the source files (combinedbot.py and bot/commands/order.py):
 ```python
 EXP_MONTH = '12'  # December
 EXP_YEAR = '25'   # 2025
@@ -382,6 +420,13 @@ Logging behavior can be modified in `logging_utils.py`:
 - Change log file formats and naming
 - Modify what data is logged
 - Adjust log rotation schedules
+
+### Payment Method Customization
+Payment methods can be customized in `bot/views.py`:
+- Add new payment methods to `PAYMENT_METHODS_ENABLED` dictionary
+- Modify payment button labels, colors, and emojis
+- Update payment information in button callbacks
+- Dynamic toggle system allows runtime changes without restarts
 
 ## Support & Contributing
 
