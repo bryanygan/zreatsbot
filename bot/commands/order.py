@@ -1638,6 +1638,10 @@ def setup(bot: commands.Bot):
             name = normalize_name(raw_name)
             parts.append(f"override_name:{name}")
         
+        # Add apt/suite/floor override if valid
+        if is_valid_field(info['addr2']):
+            parts.append(f"override_aptorsuite:{info['addr2']}")
+        
         # Handle delivery notes and dropoff preference
         notes = info['notes'].strip()
         if is_valid_field(notes):
