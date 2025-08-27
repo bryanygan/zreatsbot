@@ -885,13 +885,31 @@ def setup(bot: commands.Bot):
 
     @bot.tree.command(name='payments', description='Display payment methods')
     async def payments(interaction: discord.Interaction):
-        embed = discord.Embed(
-            title="Prin's Payments",
-            description="Select which payment method you would like to use! (Zelle/Crypto is preferred)",
-            color=0x9932cc,
-        )
-        view = PaymentView()
-        await interaction.response.send_message(embed=embed, view=view)
+        try:
+            # Create and send response as quickly as possible
+            embed = discord.Embed(
+                title="Prin's Payments",
+                description="Select which payment method you would like to use! (Zelle/Crypto is preferred)",
+                color=0x9932cc,
+            )
+            
+            # Import and create view inline to avoid any import issues
+            from ..views import PaymentView as PV
+            view = PV()
+            
+            # Send response within the 3-second window
+            await interaction.response.send_message(embed=embed, view=view)
+            
+        except discord.errors.NotFound:
+            # Interaction already expired, nothing we can do
+            print("Payment command interaction expired (this is normal if the command was called multiple times)")
+        except ImportError as e:
+            print(f"Import error in payments command: {e}")
+            await interaction.response.send_message("❌ Error loading payment methods. Please contact an admin.", ephemeral=True)
+        except Exception as e:
+            print(f"Unexpected error in payments command: {type(e).__name__}: {e}")
+            if not interaction.response.is_done():
+                await interaction.response.send_message("❌ An error occurred. Please try again.", ephemeral=True)
 
     @bot.tree.command(name='send_tracking', description='Send order tracking for this ticket')
     async def send_tracking(interaction: discord.Interaction):
