@@ -1731,7 +1731,7 @@ def setup(bot: commands.Bot):
         patterns_to_split = [
             'Subtotal:', 'Promotion:', 'Delivery Fee:', 'Taxes & Other Fees:',
             'Taxes and Other Fees:', 'Total:', 'Tipping Amount:', 'Total After Tip:',
-            'Final Total:', 'Uber Cash:', 'Tip:'
+            'Final Total:', 'Uber Cash:', 'Tip:', 'Order Total:'
         ]
         
         for pattern in patterns_to_split:
@@ -1771,8 +1771,16 @@ def setup(bot: commands.Bot):
             if in_cart_section:
                 # Format 1: • Item name (x1) - $price
                 # Format 2: ╰・1x: Item name
-                if line.startswith('•') or line.startswith('╰・'):
+                if line.startswith('•'):
                     cart_items.append(line)
+                elif line.startswith('╰・'):
+                    # Check if this is a food item (has quantity pattern like "1x:" or "2x:")
+                    # and not a subtotal/pricing line
+                    if 'x:' in line and not any(keyword in line_lower for keyword in ['subtotal:', 'promotion:', 'delivery', 'taxes', 'total:', 'uber cash:', 'tip:']):
+                        cart_items.append(line)
+                    else:
+                        # This is a pricing line, exit cart section
+                        in_cart_section = False
                 elif line and not any(keyword in line_lower for keyword in ['subtotal:', 'promotion:', 'delivery', 'taxes', 'total:', 'fare', 'order']):
                     # Also capture items that might not start with bullets but are in cart section
                     if '(' in line and ')' in line and '$' in line:  # Likely a cart item
@@ -1945,8 +1953,11 @@ def setup(bot: commands.Bot):
         
         embed.description = description
         
-        # Send the breakdown embed (not ephemeral)
-        await interaction.response.send_message(embed=embed)
+        # Send an ephemeral response to acknowledge the command
+        await interaction.response.send_message("Processing order...", ephemeral=True, delete_after=1)
+        
+        # Send the breakdown embed as a regular message in the channel (not as a response)
+        await interaction.channel.send(embed=embed)
         
         # Now trigger the payments functionality
         # Import PaymentView the same way the payments command does
@@ -1958,5 +1969,5 @@ def setup(bot: commands.Bot):
             color=0x9932cc,
         )
         
-        # Send the payment embed as a follow-up
-        await interaction.followup.send(embed=payment_embed, view=payment_view)
+        # Send the payment embed as a regular message in the channel
+        await interaction.channel.send(embed=payment_embed, view=payment_view)
