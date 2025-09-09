@@ -1876,17 +1876,19 @@ def setup(bot: commands.Bot):
             
             # Also check for format 2 items
             if not cart_items and ('rice' in order_text.lower() or 'items in bag' in order_text.lower() or '╰・' in order_text):
-                # Extract everything between Items In Bag: and Order Total:
-                bag_section_match = re.search(r'Items In Bag:\s*(.*?)(?:Order Total:|cashmachine|$)', order_text, re.IGNORECASE | re.DOTALL)
+                # Extract everything between Items In Bag: and Order Total: (or cashmachine emoji)
+                # Use a more specific pattern that stops at Order Total or the cashmachine emoji
+                bag_section_match = re.search(r'Items In Bag:\s*(.*?)(?:<:cashmachine:|Order Total:|$)', order_text, re.IGNORECASE | re.DOTALL)
                 if bag_section_match:
-                    bag_text = bag_section_match.group(1)
+                    bag_text = bag_section_match.group(1).strip()
                     # Split by ╰・ pattern and capture items
-                    items = re.findall(r'╰・([^╰]+?)(?=\s*╰・|$)', bag_text)
+                    items = re.split(r'╰・', bag_text)
                     for item in items:
                         item = item.strip()
-                        # Filter out non-item entries (subtotal, fees, etc.)
-                        if item and not any(keyword in item.lower() for keyword in ['subtotal', 'promotion', 'delivery', 'taxes', 'uber cash', 'tip', 'total']):
-                            cart_items.append('╰・' + item)
+                        # Only add non-empty items that look like food items (contain : or x:)
+                        if item and (':' in item or 'x:' in item):
+                            # Clean up the item format
+                            cart_items.append(item)
         
         # Debug: If original total is 0, something went wrong with parsing
         if original_total == 0.0 and subtotal == 0.0:
@@ -1941,7 +1943,7 @@ def setup(bot: commands.Bot):
                 description += f"{item}\n"
             description += "\n"
         
-        description += f"Your original total: ${original_total:.2f}\n\n"
+        description += f"Your original total + taxes + Uber fees: ${original_total:.2f}\n\n"
         description += "**Promo Discount + Service Fee successfully applied!**\n\n"
         description += f"Tip amount: ${tip_amount:.2f}\n\n"
         description += f"Your new total: **${new_total:.2f}**"
