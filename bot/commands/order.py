@@ -1746,15 +1746,36 @@ def setup(bot: commands.Bot):
         taxes_fees = 0.0
         final_total = 0.0
         temp_total = 0.0  # For storing "Total:" value temporarily
+        cart_items = []  # Store cart items
         
         # Detect which format and parse accordingly
         is_format_two = ':rice:' in order_text or ':cashmachine:' in order_text
+        in_cart_section = False
         
         for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
             line_lower = line.lower()
             
+            # Check for cart items section
+            if 'cart items:' in line_lower or 'items in bag:' in line_lower:
+                in_cart_section = True
+                continue
+            elif 'fare breakdown:' in line_lower or 'order total:' in line_lower:
+                in_cart_section = False
+                continue
+            
+            # Collect cart items
+            if in_cart_section:
+                # Format 1: • Item name (x1) - $price
+                # Format 2: ╰・1x: Item name
+                if line.startswith('•') or line.startswith('╰・'):
+                    cart_items.append(line)
+            
             # Parse subtotal
-            if 'subtotal:' in line_lower:
+            elif 'subtotal:' in line_lower:
                 if '╰・' in line:
                     # Format 2: ╰・Subtotal: $24.80
                     parts = line.split(':', 1)
@@ -1776,7 +1797,8 @@ def setup(bot: commands.Bot):
                 else:
                     colon_idx = line.rfind(':')
                     if colon_idx != -1:
-                        delivery_fee = parse_money(line[colon_idx + 1:])
+                        value_str = line[colon_idx + 1:].strip()
+                        delivery_fee = parse_money(value_str)
             
             # Parse taxes & fees
             elif 'taxes' in line_lower and ('fees' in line_lower or 'other' in line_lower):
@@ -1792,9 +1814,9 @@ def setup(bot: commands.Bot):
             # Parse final total (format varies)
             elif 'total after tip:' in line_lower:
                 # Format 1 - this is the most accurate
-                parts = line.split(':', 1)
-                if len(parts) > 1:
-                    final_total = parse_money(parts[1])
+                colon_idx = line.rfind(':')
+                if colon_idx != -1:
+                    final_total = parse_money(line[colon_idx + 1:])
             elif 'final total:' in line_lower:
                 # Format 2
                 if '╰・' in line:
@@ -1835,7 +1857,16 @@ def setup(bot: commands.Bot):
         )
         
         # Build the description
-        description = f"Your original total: ${original_total:.2f}\n\n"
+        description = ""
+        
+        # Add cart items if found
+        if cart_items:
+            description += "**Cart Items:**\n"
+            for item in cart_items:
+                description += f"{item}\n"
+            description += "\n"
+        
+        description += f"Your original total: ${original_total:.2f}\n\n"
         description += "Promo Discount + Service Fee successfully applied!\n\n"
         description += f"Tip amount: ${tip_amount:.2f}\n\n"
         description += f"Your new total: **${new_total:.2f}**"
