@@ -1699,3 +1699,130 @@ def setup(bot: commands.Bot):
         )
         
         await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    @bot.tree.command(name='z', description='Parse order information and display breakdown')
+    @app_commands.describe(
+        order_text="Paste the order information here",
+        tip="Optional tip amount (e.g., 2, 3.50)"
+    )
+    async def z_command(interaction: discord.Interaction, order_text: str, tip: str = None):
+        """Parse order information and display breakdown with payment options"""
+        
+        def parse_money(value_str):
+            """Extract numeric value from money string"""
+            if not value_str:
+                return 0.0
+            # Remove dollar signs, commas, and whitespace
+            cleaned = value_str.replace('$', '').replace(',', '').strip()
+            # Handle negative values (like -$24.80 or $-24.80)
+            cleaned = cleaned.replace('$-', '-').replace('-$', '-')
+            try:
+                return float(cleaned)
+            except ValueError:
+                return 0.0
+        
+        # Parse the order text to extract values
+        lines = order_text.split('\n')
+        
+        # Initialize values
+        subtotal = 0.0
+        delivery_fee = 0.0
+        taxes_fees = 0.0
+        final_total = 0.0
+        
+        # Detect which format and parse accordingly
+        is_format_two = ':rice:' in order_text or ':cashmachine:' in order_text
+        
+        for line in lines:
+            line_lower = line.lower()
+            
+            # Parse subtotal
+            if 'subtotal:' in line_lower:
+                if '╰・' in line:
+                    # Format 2: ╰・Subtotal: $24.80
+                    parts = line.split(':', 1)
+                    if len(parts) > 1:
+                        subtotal = parse_money(parts[1])
+                else:
+                    # Format 1: Subtotal: $28.08
+                    parts = line.split(':', 1)
+                    if len(parts) > 1:
+                        subtotal = parse_money(parts[1])
+            
+            # Parse delivery fee
+            elif 'delivery fee:' in line_lower:
+                if '╰・' in line:
+                    parts = line.split(':', 1)
+                    if len(parts) > 1:
+                        delivery_fee = parse_money(parts[1])
+                else:
+                    parts = line.split(':', 1)
+                    if len(parts) > 1:
+                        delivery_fee = parse_money(parts[1])
+            
+            # Parse taxes & fees
+            elif 'taxes' in line_lower and 'fees' in line_lower:
+                if '╰・' in line:
+                    parts = line.split(':', 1)
+                    if len(parts) > 1:
+                        taxes_fees = parse_money(parts[1])
+                else:
+                    parts = line.split(':', 1)
+                    if len(parts) > 1:
+                        taxes_fees = parse_money(parts[1])
+            
+            # Parse final total (format varies)
+            elif 'total after tip:' in line_lower:
+                # Format 1
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    final_total = parse_money(parts[1])
+            elif 'final total:' in line_lower:
+                # Format 2
+                if '╰・' in line:
+                    parts = line.split(':', 1)
+                    if len(parts) > 1:
+                        final_total = parse_money(parts[1])
+        
+        # Calculate original total
+        original_total = subtotal + delivery_fee + taxes_fees
+        
+        # Parse tip amount
+        tip_amount = 0.0
+        if tip:
+            try:
+                tip_amount = float(tip.strip())
+            except ValueError:
+                tip_amount = 0.0
+        
+        # Calculate new total with tip
+        new_total = final_total + tip_amount
+        
+        # Create the breakdown embed
+        embed = discord.Embed(
+            title="Order Breakdown:",
+            color=discord.Color.green()
+        )
+        
+        # Build the description
+        description = f"Your original total: ${original_total:.2f}\n\n"
+        description += "Promo Discount + Service Fee successfully applied!\n\n"
+        description += f"Tip amount: ${tip_amount:.2f}\n\n"
+        description += f"Your new total: **${new_total:.2f}**"
+        
+        embed.description = description
+        
+        # Send the breakdown embed (not ephemeral)
+        await interaction.response.send_message(embed=embed)
+        
+        # Now trigger the payments functionality
+        # Import PaymentView if not already imported
+        payment_view = PaymentView(bot)
+        payment_embed = discord.Embed(
+            title="Payment Methods",
+            description="Select your preferred payment method:",
+            color=discord.Color.blue()
+        )
+        
+        # Send the payment embed as a follow-up
+        await interaction.followup.send(embed=payment_embed, view=payment_view)
