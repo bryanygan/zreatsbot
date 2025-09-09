@@ -1775,7 +1775,7 @@ def setup(bot: commands.Bot):
                     cart_items.append(line)
             
             # Parse subtotal
-            elif 'subtotal:' in line_lower:
+            elif 'subtotal:' in line_lower and 'cart' not in line_lower:  # Avoid cart items line
                 if '╰・' in line:
                     # Format 2: ╰・Subtotal: $24.80
                     parts = line.split(':', 1)
@@ -1833,8 +1833,49 @@ def setup(bot: commands.Bot):
         if final_total == 0.0 and temp_total != 0.0:
             final_total = temp_total
         
+        # Backup regex parsing for final total if still 0
+        if final_total == 0.0:
+            import re
+            # Try to find "Total After Tip" first
+            after_tip_match = re.search(r'Total After Tip:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+            if after_tip_match:
+                final_total = parse_money(after_tip_match.group(1))
+            else:
+                # Try "Final Total"
+                final_match = re.search(r'Final Total:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+                if final_match:
+                    final_total = parse_money(final_match.group(1))
+                else:
+                    # Last resort - just "Total:" but not "Subtotal:"
+                    total_match = re.search(r'(?<!Sub)Total:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+                    if total_match:
+                        final_total = parse_money(total_match.group(1))
+        
         # Calculate original total
         original_total = subtotal + delivery_fee + taxes_fees
+        
+        # Debug: If original total is 0, something went wrong with parsing
+        if original_total == 0.0 and subtotal == 0.0:
+            # Try a more aggressive parsing approach
+            import re
+            
+            # Look for subtotal pattern anywhere in the text
+            subtotal_match = re.search(r'Subtotal:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+            if subtotal_match:
+                subtotal = parse_money(subtotal_match.group(1))
+            
+            # Look for delivery fee
+            delivery_match = re.search(r'Delivery Fee:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+            if delivery_match:
+                delivery_fee = parse_money(delivery_match.group(1))
+            
+            # Look for taxes
+            taxes_match = re.search(r'Taxes (?:&|and) (?:Other )?Fees:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+            if taxes_match:
+                taxes_fees = parse_money(taxes_match.group(1))
+            
+            # Recalculate
+            original_total = subtotal + delivery_fee + taxes_fees
         
         # Parse tip amount
         tip_amount = 0.0
