@@ -94,12 +94,9 @@ def setup(bot: commands.Bot):
             parts.append(f"override_aptorsuite:{info['addr2']}")
         notes = info['notes'].strip()
         if is_valid_field(notes):
-            if notes.lower() == 'meet at door':
-                parts.append("override_dropoff:Meet at Door")
-            else:
-                parts.append(f"override_notes:{notes}")
-                if 'leave' in notes.lower():
-                    parts.append("override_dropoff:Leave at Door")
+            parts.append(f"override_notes:{notes}")
+            if 'leave' in notes.lower():
+                parts.append("override_dropoff:Leave at Door")
 
         command = ' '.join(parts)
 
@@ -535,12 +532,9 @@ def setup(bot: commands.Bot):
             parts.append(f"override_aptorsuite:{info['addr2']}")
         notes = info['notes'].strip()
         if is_valid_field(notes):
-            if notes.lower() == 'meet at door':
-                parts.append("override_dropoff:Meet at Door")
-            else:
-                parts.append(f"override_notes:{notes}")
-                if 'leave' in notes.lower():
-                    parts.append("override_dropoff:Leave at Door")
+            parts.append(f"override_notes:{notes}")
+            if 'leave' in notes.lower():
+                parts.append("override_dropoff:Leave at Door")
 
         command = ' '.join(parts)
 
@@ -1663,14 +1657,11 @@ def setup(bot: commands.Bot):
         # Handle delivery notes and dropoff preference
         notes = info['notes'].strip()
         if is_valid_field(notes):
-            if notes.lower() == 'meet at door':
-                parts.append("override_dropoff:Meet at Door")
-            else:
-                # Always add the notes
-                parts.append(f"override_notes:{notes}")
-                # If notes contain "leave", also set dropoff preference
-                if 'leave' in notes.lower():
-                    parts.append("override_dropoff:Leave at Door")
+            # Always add the notes
+            parts.append(f"override_notes:{notes}")
+            # If notes contain "leave", also set dropoff preference
+            if 'leave' in notes.lower():
+                parts.append("override_dropoff:Leave at Door")
 
         command = ' '.join(parts)
 
