@@ -1778,8 +1778,8 @@ def setup(bot: commands.Bot):
                     if '(' in line and ')' in line and '$' in line:  # Likely a cart item
                         cart_items.append('• ' + line if not line.startswith('•') else line)
             
-            # Parse subtotal
-            elif 'subtotal:' in line_lower and 'cart' not in line_lower:  # Avoid cart items line
+            # Parse subtotal (including "Estimated Subtotal")
+            elif ('subtotal:' in line_lower or 'estimated subtotal:' in line_lower) and 'cart' not in line_lower:  # Avoid cart items line
                 if '╰・' in line:
                     # Format 2: ╰・Subtotal: $24.80
                     parts = line.split(':', 1)
@@ -1861,25 +1861,40 @@ def setup(bot: commands.Bot):
         # If no cart items found, try regex approach
         if not cart_items:
             import re
-            # Look for items with bullet points and prices
-            item_pattern = r'[•╰]\s*(?:・)?(?:\d+x:?\s*)?([^$\n]+?)(?:\s*\([^)]+\))?\s*-?\s*\$[\d,]+\.?\d*'
-            matches = re.findall(item_pattern, order_text)
-            if matches:
-                # Re-extract full lines with prices
-                lines_temp = order_text.split('\n')
-                for line in lines_temp:
-                    if '•' in line and '$' in line and 'subtotal' not in line.lower():
-                        cart_items.append(line.strip())
-                    elif '╰' in line and ('$' in line or ':' in line) and 'subtotal' not in line.lower():
-                        cart_items.append(line.strip())
+            # First check if CART ITEMS section exists
+            if 'CART ITEMS:' in order_text:
+                # Extract everything between CART ITEMS: and FARE BREAKDOWN:
+                cart_section_match = re.search(r'CART ITEMS:\s*(.*?)(?:FARE BREAKDOWN:|$)', order_text, re.IGNORECASE | re.DOTALL)
+                if cart_section_match:
+                    cart_text = cart_section_match.group(1)
+                    # Split by bullet points
+                    items = re.findall(r'•\s*([^•]+?)(?=\s*•|$)', cart_text)
+                    for item in items:
+                        item = item.strip()
+                        if item and '$' in item:
+                            cart_items.append('• ' + item)
+            
+            # Also check for format 2 items
+            if not cart_items and ('rice' in order_text.lower() or 'items in bag' in order_text.lower() or '╰・' in order_text):
+                # Extract everything between Items In Bag: and Order Total:
+                bag_section_match = re.search(r'Items In Bag:\s*(.*?)(?:Order Total:|cashmachine|$)', order_text, re.IGNORECASE | re.DOTALL)
+                if bag_section_match:
+                    bag_text = bag_section_match.group(1)
+                    # Split by ╰・ pattern and capture items
+                    items = re.findall(r'╰・([^╰]+?)(?=\s*╰・|$)', bag_text)
+                    for item in items:
+                        item = item.strip()
+                        # Filter out non-item entries (subtotal, fees, etc.)
+                        if item and not any(keyword in item.lower() for keyword in ['subtotal', 'promotion', 'delivery', 'taxes', 'uber cash', 'tip', 'total']):
+                            cart_items.append('╰・' + item)
         
         # Debug: If original total is 0, something went wrong with parsing
         if original_total == 0.0 and subtotal == 0.0:
             # Try a more aggressive parsing approach
             import re
             
-            # Look for subtotal pattern anywhere in the text
-            subtotal_match = re.search(r'Subtotal:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+            # Look for subtotal pattern anywhere in the text (including "Estimated Subtotal")
+            subtotal_match = re.search(r'(?:Estimated\s+)?Subtotal:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
             if subtotal_match:
                 subtotal = parse_money(subtotal_match.group(1))
             
