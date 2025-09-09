@@ -31,6 +31,19 @@ EXP_YEAR = '30'
 ZIP_CODE = '07724'
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db')
 
+def clean_tip_amount(tip_str):
+    """Extract numeric tip value, removing dollar signs and validating format"""
+    if not tip_str:
+        return ""
+    # Remove dollar signs and whitespace
+    cleaned = tip_str.strip().replace('$', '')
+    # Validate it's a proper number (including decimals)
+    try:
+        float(cleaned)  # Validate it's a number
+        return cleaned
+    except ValueError:
+        return tip_str  # Return original if not a valid number
+
 
 def setup(bot: commands.Bot):
     @bot.tree.command(name='fusion_assist', description='Format a Fusion assist order')
@@ -118,7 +131,7 @@ def setup(bot: commands.Bot):
         embed.add_field(name="", value=f"```{command}```", inline=False)
         if email:
             embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
-        embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
+        embed.add_field(name="Tip:", value=f"```{clean_tip_amount(info['tip'])}```", inline=False)
         pool_counts = bot.get_pool_counts()
         card_count = pool_counts['cards']
         warnings = []
@@ -465,7 +478,7 @@ def setup(bot: commands.Bot):
             details.add_field(name="Apt / Suite / Floor:", value=f"```{info['addr2']}```", inline=False)
         if is_valid_field(info['notes']):
             details.add_field(name="Delivery Notes:", value=f"```{info['notes']}```", inline=False)
-        details.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
+        details.add_field(name="Tip:", value=f"```{clean_tip_amount(info['tip'])}```", inline=False)
 
         await interaction.response.send_message(embed=details, ephemeral=True)
 
@@ -555,7 +568,7 @@ def setup(bot: commands.Bot):
         embed = discord.Embed(title="Fusion Order", color=0x0099ff)
         embed.add_field(name="", value=f"```{command}```", inline=False)
         embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
-        embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
+        embed.add_field(name="Tip:", value=f"```{clean_tip_amount(info['tip'])}```", inline=False)
         pool_counts = bot.get_pool_counts()
         card_count = pool_counts['cards']
         warnings = []
@@ -752,7 +765,7 @@ def setup(bot: commands.Bot):
             embed.add_field(name="Apt / Suite / Floor:", value=f"```{info['addr2']}```", inline=False)
         if is_valid_field(info['notes']):
             embed.add_field(name="Delivery Notes:", value=f"```{info['notes']}```", inline=False)
-        embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
+        embed.add_field(name="Tip:", value=f"```{clean_tip_amount(info['tip'])}```", inline=False)
         pool_counts = bot.get_pool_counts()
         card_count = pool_counts['cards']
         warnings = []
@@ -859,7 +872,7 @@ def setup(bot: commands.Bot):
             embed.add_field(name="Apt / Suite / Floor:", value=f"```{info['addr2']}```", inline=False)
         if is_valid_field(info['notes']):
             embed.add_field(name="Delivery Notes:", value=f"```{info['notes']}```", inline=False)
-        embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
+        embed.add_field(name="Tip:", value=f"```{clean_tip_amount(info['tip'])}```", inline=False)
         
         pool_counts = bot.get_pool_counts()
         card_count = pool_counts['cards']
@@ -1669,7 +1682,7 @@ def setup(bot: commands.Bot):
         embed = discord.Embed(title="Reorder Command", color=0xFF1493)
         embed.add_field(name="", value=f"```{command}```", inline=False)
         embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
-        embed.add_field(name="", value=f"Tip: ${info['tip']}", inline=False)
+        embed.add_field(name="Tip:", value=f"```{clean_tip_amount(info['tip'])}```", inline=False)
         
         # Log the command
         log_command_output(
