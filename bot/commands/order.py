@@ -1773,6 +1773,10 @@ def setup(bot: commands.Bot):
                 # Format 2: ╰・1x: Item name
                 if line.startswith('•') or line.startswith('╰・'):
                     cart_items.append(line)
+                elif line and not any(keyword in line_lower for keyword in ['subtotal:', 'promotion:', 'delivery', 'taxes', 'total:', 'fare', 'order']):
+                    # Also capture items that might not start with bullets but are in cart section
+                    if '(' in line and ')' in line and '$' in line:  # Likely a cart item
+                        cart_items.append('• ' + line if not line.startswith('•') else line)
             
             # Parse subtotal
             elif 'subtotal:' in line_lower and 'cart' not in line_lower:  # Avoid cart items line
@@ -1854,6 +1858,21 @@ def setup(bot: commands.Bot):
         # Calculate original total
         original_total = subtotal + delivery_fee + taxes_fees
         
+        # If no cart items found, try regex approach
+        if not cart_items:
+            import re
+            # Look for items with bullet points and prices
+            item_pattern = r'[•╰]\s*(?:・)?(?:\d+x:?\s*)?([^$\n]+?)(?:\s*\([^)]+\))?\s*-?\s*\$[\d,]+\.?\d*'
+            matches = re.findall(item_pattern, order_text)
+            if matches:
+                # Re-extract full lines with prices
+                lines_temp = order_text.split('\n')
+                for line in lines_temp:
+                    if '•' in line and '$' in line and 'subtotal' not in line.lower():
+                        cart_items.append(line.strip())
+                    elif '╰' in line and ('$' in line or ':' in line) and 'subtotal' not in line.lower():
+                        cart_items.append(line.strip())
+        
         # Debug: If original total is 0, something went wrong with parsing
         if original_total == 0.0 and subtotal == 0.0:
             # Try a more aggressive parsing approach
@@ -1908,7 +1927,7 @@ def setup(bot: commands.Bot):
             description += "\n"
         
         description += f"Your original total: ${original_total:.2f}\n\n"
-        description += "Promo Discount + Service Fee successfully applied!\n\n"
+        description += "**Promo Discount + Service Fee successfully applied!**\n\n"
         description += f"Tip amount: ${tip_amount:.2f}\n\n"
         description += f"Your new total: **${new_total:.2f}**"
         
