@@ -187,6 +187,8 @@ def main():
                 status = "open"
             elif content in ("close", "closed"):
                 status = "close"
+            elif content in ("break", "on hold", "hold"):
+                status = "break"
             else:
                 await bot.process_commands(message)
                 return
