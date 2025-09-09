@@ -1703,9 +1703,10 @@ def setup(bot: commands.Bot):
     @bot.tree.command(name='z', description='Parse order information and display breakdown')
     @app_commands.describe(
         order_text="Paste the order information here",
-        tip="Optional tip amount (e.g., 2, 3.50)"
+        tip="Optional tip amount (e.g., 2, 3.50)",
+        vip="Set to true for VIP pricing ($6 service fee instead of $7)"
     )
-    async def z_command(interaction: discord.Interaction, order_text: str, tip: str = None):
+    async def z_command(interaction: discord.Interaction, order_text: str, tip: str = None, vip: str = None):
         """Parse order information and display breakdown with payment options"""
         
         def parse_money(value_str):
@@ -1795,8 +1796,11 @@ def setup(bot: commands.Bot):
             except ValueError:
                 tip_amount = 0.0
         
-        # Calculate new total with tip
-        new_total = final_total + tip_amount
+        # Calculate new total with tip and service fee
+        # Check if VIP for reduced service fee
+        is_vip = vip and vip.lower() == 'true'
+        service_fee = 6.0 if is_vip else 7.0
+        new_total = final_total + tip_amount + service_fee
         
         # Create the breakdown embed
         embed = discord.Embed(
