@@ -1730,6 +1730,7 @@ def setup(bot: commands.Bot):
         delivery_fee = 0.0
         taxes_fees = 0.0
         final_total = 0.0
+        temp_total = 0.0  # For storing "Total:" value temporarily
         
         # Detect which format and parse accordingly
         is_format_two = ':rice:' in order_text or ':cashmachine:' in order_text
@@ -1746,9 +1747,10 @@ def setup(bot: commands.Bot):
                         subtotal = parse_money(parts[1])
                 else:
                     # Format 1: Subtotal: $28.08
-                    parts = line.split(':', 1)
-                    if len(parts) > 1:
-                        subtotal = parse_money(parts[1])
+                    # Split on the last colon to handle any prefixes
+                    colon_idx = line.rfind(':')
+                    if colon_idx != -1:
+                        subtotal = parse_money(line[colon_idx + 1:])
             
             # Parse delivery fee
             elif 'delivery fee:' in line_lower:
@@ -1757,24 +1759,24 @@ def setup(bot: commands.Bot):
                     if len(parts) > 1:
                         delivery_fee = parse_money(parts[1])
                 else:
-                    parts = line.split(':', 1)
-                    if len(parts) > 1:
-                        delivery_fee = parse_money(parts[1])
+                    colon_idx = line.rfind(':')
+                    if colon_idx != -1:
+                        delivery_fee = parse_money(line[colon_idx + 1:])
             
             # Parse taxes & fees
-            elif 'taxes' in line_lower and 'fees' in line_lower:
+            elif 'taxes' in line_lower and ('fees' in line_lower or 'other' in line_lower):
                 if '╰・' in line:
                     parts = line.split(':', 1)
                     if len(parts) > 1:
                         taxes_fees = parse_money(parts[1])
                 else:
-                    parts = line.split(':', 1)
-                    if len(parts) > 1:
-                        taxes_fees = parse_money(parts[1])
+                    colon_idx = line.rfind(':')
+                    if colon_idx != -1:
+                        taxes_fees = parse_money(line[colon_idx + 1:])
             
             # Parse final total (format varies)
             elif 'total after tip:' in line_lower:
-                # Format 1
+                # Format 1 - this is the most accurate
                 parts = line.split(':', 1)
                 if len(parts) > 1:
                     final_total = parse_money(parts[1])
@@ -1784,6 +1786,15 @@ def setup(bot: commands.Bot):
                     parts = line.split(':', 1)
                     if len(parts) > 1:
                         final_total = parse_money(parts[1])
+            elif line_lower.startswith('total:') and 'subtotal' not in line_lower:
+                # Handle "Total: $3.84" format - store temporarily
+                parts = line.split(':', 1)
+                if len(parts) > 1:
+                    temp_total = parse_money(parts[1])
+        
+        # If we didn't find "Total After Tip" but found "Total:", use that
+        if final_total == 0.0 and temp_total != 0.0:
+            final_total = temp_total
         
         # Calculate original total
         original_total = subtotal + delivery_fee + taxes_fees
@@ -1820,12 +1831,13 @@ def setup(bot: commands.Bot):
         await interaction.response.send_message(embed=embed)
         
         # Now trigger the payments functionality
-        # Import PaymentView if not already imported
-        payment_view = PaymentView(bot)
+        # Import PaymentView the same way the payments command does
+        from ..views import PaymentView as PV
+        payment_view = PV()
         payment_embed = discord.Embed(
-            title="Payment Methods",
-            description="Select your preferred payment method:",
-            color=discord.Color.blue()
+            title="Prin's Payments",
+            description="Select which payment method you would like to use! (Zelle/Crypto is preferred)",
+            color=0x9932cc,
         )
         
         # Send the payment embed as a follow-up
