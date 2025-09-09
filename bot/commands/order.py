@@ -1831,11 +1831,13 @@ def setup(bot: commands.Bot):
                     final_total = parse_money(line[colon_idx + 1:])
             elif 'final total:' in line_lower:
                 # Format 2
-                if '╰・' in line:
-                    parts = line.split(':', 1)
-                    if len(parts) > 1:
-                        final_total = parse_money(parts[1])
-            elif line_lower.startswith('total:') and 'subtotal' not in line_lower:
+                colon_idx = line.rfind(':')
+                if colon_idx != -1:
+                    value_str = line[colon_idx + 1:].strip()
+                    parsed_value = parse_money(value_str)
+                    if parsed_value > 0:
+                        final_total = parsed_value
+            elif line_lower.startswith('total:') and 'subtotal' not in line_lower and 'final' not in line_lower:
                 # Handle "Total: $3.84" format - store temporarily
                 parts = line.split(':', 1)
                 if len(parts) > 1:
