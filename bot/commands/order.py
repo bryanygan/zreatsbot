@@ -1878,7 +1878,8 @@ def setup(bot: commands.Bot):
             if not cart_items and ('items in bag' in order_text.lower() or '🍚' in order_text):
                 # Find all ╰・ items that look like food (have quantity pattern)
                 # Match items like "1x: Rice Bowl" or "2x: Five Falafels"
-                food_items = re.findall(r'╰・(\d+x:[^╰<]+?)(?=\s*╰・|<:|Order Total|$)', order_text)
+                # Stop when we hit Order Total or another section marker
+                food_items = re.findall(r'╰・(\d+x:[^╰<]+?)(?=\s*(?:╰・(?:\d+x:|Subtotal:|Promotion:|Delivery|Taxes|Uber Cash:|Tip:|Final Total:)|<:|Order Total|$))', order_text)
                 for item in food_items:
                     item = item.strip()
                     if item and not any(keyword in item.lower() for keyword in ['subtotal', 'promotion', 'delivery', 'taxes', 'uber', 'tip', 'total']):
