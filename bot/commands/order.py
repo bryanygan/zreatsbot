@@ -1875,20 +1875,14 @@ def setup(bot: commands.Bot):
                             cart_items.append('• ' + item)
             
             # Also check for format 2 items
-            if not cart_items and ('rice' in order_text.lower() or 'items in bag' in order_text.lower() or '╰・' in order_text):
-                # Extract everything between Items In Bag: and Order Total: (or cashmachine emoji)
-                # Use a more specific pattern that stops at Order Total or the cashmachine emoji
-                bag_section_match = re.search(r'Items In Bag:\s*(.*?)(?:<:cashmachine:|Order Total:|$)', order_text, re.IGNORECASE | re.DOTALL)
-                if bag_section_match:
-                    bag_text = bag_section_match.group(1).strip()
-                    # Split by ╰・ pattern and capture items
-                    items = re.split(r'╰・', bag_text)
-                    for item in items:
-                        item = item.strip()
-                        # Only add non-empty items that look like food items (contain : or x:)
-                        if item and (':' in item or 'x:' in item):
-                            # Clean up the item format
-                            cart_items.append(item)
+            if not cart_items and ('items in bag' in order_text.lower() or '🍚' in order_text):
+                # Find all ╰・ items that look like food (have quantity pattern)
+                # Match items like "1x: Rice Bowl" or "2x: Five Falafels"
+                food_items = re.findall(r'╰・(\d+x:[^╰<]+?)(?=\s*╰・|<:|Order Total|$)', order_text)
+                for item in food_items:
+                    item = item.strip()
+                    if item and not any(keyword in item.lower() for keyword in ['subtotal', 'promotion', 'delivery', 'taxes', 'uber', 'tip', 'total']):
+                        cart_items.append(item)
         
         # Debug: If original total is 0, something went wrong with parsing
         if original_total == 0.0 and subtotal == 0.0:
