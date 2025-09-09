@@ -1723,7 +1723,22 @@ def setup(bot: commands.Bot):
                 return 0.0
         
         # Parse the order text to extract values
-        lines = order_text.split('\n')
+        # Handle both single-line and multi-line formats
+        # Split potential single-line entries into separate lines
+        text_parts = order_text.replace('FARE BREAKDOWN:', '\n')
+        
+        # Common patterns that should be on new lines
+        patterns_to_split = [
+            'Subtotal:', 'Promotion:', 'Delivery Fee:', 'Taxes & Other Fees:',
+            'Taxes and Other Fees:', 'Total:', 'Tipping Amount:', 'Total After Tip:',
+            'Final Total:', 'Uber Cash:', 'Tip:'
+        ]
+        
+        for pattern in patterns_to_split:
+            text_parts = text_parts.replace(' ' + pattern, '\n' + pattern)
+            text_parts = text_parts.replace('╰・' + pattern, '\n╰・' + pattern)
+        
+        lines = text_parts.split('\n')
         
         # Initialize values
         subtotal = 0.0
