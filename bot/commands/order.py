@@ -583,7 +583,15 @@ def setup(bot: commands.Bot):
         footer_parts.extend(warnings)
         embed.set_footer(text=" | ".join(footer_parts))
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        # Handle interaction timeout for final response
+        try:
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except discord.errors.NotFound:
+            print("Fusion order interaction expired")
+            return
+        except discord.HTTPException as e:
+            print(f"Failed to send fusion order response: {e}")
+            return
     
     @bot.tree.command(name='debug_stewardess_webhook', description='Debug the stewardess webhook specifically')
     async def debug_stewardess_webhook(interaction: discord.Interaction):
@@ -790,7 +798,7 @@ def setup(bot: commands.Bot):
         
         # Handle interaction timeout
         try:
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
         except discord.errors.NotFound:
             # Interaction expired, try to send as followup if possible
             print("Wool order interaction expired")
@@ -907,7 +915,15 @@ def setup(bot: commands.Bot):
         footer_parts.extend(warnings)
         embed.set_footer(text=" | ".join(footer_parts))
         
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        # Handle interaction timeout for final response
+        try:
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except discord.errors.NotFound:
+            print("Pump order interaction expired")
+            return
+        except discord.HTTPException as e:
+            print(f"Failed to send pump order response: {e}")
+            return
 
     @bot.tree.command(name='payments', description='Display payment methods')
     async def payments(interaction: discord.Interaction):
@@ -2115,17 +2131,19 @@ def setup(bot: commands.Bot):
             if 'CART ITEMS:' in order_text:
                 # Extract everything between CART ITEMS: and FARE BREAKDOWN:
                 # Handle both multiline and single-line formats
-                cart_section_match = re.search(r'CART ITEMS:\s*(.*?)(?:\s+FARE BREAKDOWN:|\s*FARE BREAKDOWN:|$)', order_text, re.IGNORECASE | re.DOTALL)
+                cart_section_match = re.search(r'CART ITEMS:\s*(.*?)(?:\s*FARE BREAKDOWN:|\s*$)', order_text, re.IGNORECASE | re.DOTALL)
                 if cart_section_match:
                     cart_text = cart_section_match.group(1).strip()
                     
                     # Handle case where items are all on one line separated by spaces
                     # Look for bullet points followed by item descriptions
                     if '•' in cart_text:
-                        # Split by bullet points and clean up
-                        items = re.findall(r'•\s*([^•]+?)(?=\s*•|$)', cart_text)
+                        # More robust regex to capture items between bullet points
+                        items = re.findall(r'•\s*([^•]+?)(?=\s*(?:•|\s*FARE\s+BREAKDOWN:|\s*$))', cart_text, re.IGNORECASE)
                         for item in items:
                             item = item.strip()
+                            # Remove any trailing content after FARE BREAKDOWN
+                            item = re.sub(r'\s*FARE\s+BREAKDOWN:.*$', '', item, flags=re.IGNORECASE).strip()
                             if item and ('$' in item or '(' in item):  # Has price or quantity
                                 cart_items.append('• ' + item)
                     else:
@@ -2134,6 +2152,8 @@ def setup(bot: commands.Bot):
                         price_items = re.findall(r'([^•\n]+\$[\d,]+\.?\d*)', cart_text)
                         for item in price_items:
                             item = item.strip()
+                            # Remove any trailing content after FARE BREAKDOWN
+                            item = re.sub(r'\s*FARE\s+BREAKDOWN:.*$', '', item, flags=re.IGNORECASE).strip()
                             if item and not any(keyword in item.lower() for keyword in ['subtotal', 'promotion', 'delivery', 'taxes', 'total']):
                                 cart_items.append('• ' + item)
             
