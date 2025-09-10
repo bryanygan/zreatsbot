@@ -2069,7 +2069,7 @@ def setup(bot: commands.Bot):
                         # Send payment instructions
                         instructions_embed = discord.Embed(
                             title="Payment Instructions",
-                            description="When paying, please don't add any notes. Only single emojis or a period (.) if necessary. **Always** send as Friends and Family if using PayPal, Venmo, or Zelle. Please send a payment confirmation screenshot and ping <@745694160002089130> when paid!",
+                            description="When paying, **please don't add any notes.** Only **single emojis** or a **period (.)** if necessary. **Always send as Friends and Family if using PayPal, Venmo, or Zelle**. After you pay, please send a screenshot of the payment confirmation and please ping <@745694160002089130>!",
                             color=0x00ff00
                         )
                         await interaction.channel.send(embed=instructions_embed)
