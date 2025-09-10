@@ -1909,7 +1909,7 @@ def setup(bot: commands.Bot):
                         final_total = parse_money(total_match.group(1))
         
         # Calculate original total
-        original_total = subtotal + delivery_fee + taxes_fees
+        original_total = subtotal + delivery_fee + taxes_fees + 3.49
         
         # Check if order total is under $15 - require confirmation
         if original_total < 15.0:
@@ -2065,7 +2065,7 @@ def setup(bot: commands.Bot):
                 taxes_fees = parse_money(taxes_match.group(1))
             
             # Recalculate
-            original_total = subtotal + delivery_fee + taxes_fees + 3.49 # funny number to inflate price and/or comp for uber one discounts
+            original_total = subtotal + delivery_fee + taxes_fees + 3.49
         
         # Parse tip amount - first check ticket embed, then use manual tip if provided
         tip_amount = 0.0
