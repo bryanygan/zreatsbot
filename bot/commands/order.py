@@ -2096,15 +2096,28 @@ def setup(bot: commands.Bot):
             # First check if CART ITEMS section exists
             if 'CART ITEMS:' in order_text:
                 # Extract everything between CART ITEMS: and FARE BREAKDOWN:
-                cart_section_match = re.search(r'CART ITEMS:\s*(.*?)(?:FARE BREAKDOWN:|$)', order_text, re.IGNORECASE | re.DOTALL)
+                # Handle both multiline and single-line formats
+                cart_section_match = re.search(r'CART ITEMS:\s*(.*?)(?:\s+FARE BREAKDOWN:|\s*FARE BREAKDOWN:|$)', order_text, re.IGNORECASE | re.DOTALL)
                 if cart_section_match:
-                    cart_text = cart_section_match.group(1)
-                    # Split by bullet points
-                    items = re.findall(r'•\s*([^•]+?)(?=\s*•|$)', cart_text)
-                    for item in items:
-                        item = item.strip()
-                        if item and '$' in item:
-                            cart_items.append('• ' + item)
+                    cart_text = cart_section_match.group(1).strip()
+                    
+                    # Handle case where items are all on one line separated by spaces
+                    # Look for bullet points followed by item descriptions
+                    if '•' in cart_text:
+                        # Split by bullet points and clean up
+                        items = re.findall(r'•\s*([^•]+?)(?=\s*•|$)', cart_text)
+                        for item in items:
+                            item = item.strip()
+                            if item and ('$' in item or '(' in item):  # Has price or quantity
+                                cart_items.append('• ' + item)
+                    else:
+                        # Fallback: try to find items with prices in the cart section
+                        # Look for patterns like "Item Name - $X.XX" or "Item Name (xN) - $X.XX"
+                        price_items = re.findall(r'([^•\n]+\$[\d,]+\.?\d*)', cart_text)
+                        for item in price_items:
+                            item = item.strip()
+                            if item and not any(keyword in item.lower() for keyword in ['subtotal', 'promotion', 'delivery', 'taxes', 'total']):
+                                cart_items.append('• ' + item)
             
             # Also check for format 2 items
             if not cart_items and ('items in bag' in order_text.lower() or '🍚' in order_text):
