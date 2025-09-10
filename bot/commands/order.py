@@ -1723,6 +1723,10 @@ def setup(bot: commands.Bot):
                 return 0.0
         
         # Parse the order text to extract values
+        # First, ensure each ╰・ is on its own line
+        order_text = order_text.replace(' ╰・', '\n╰・')
+        order_text = order_text.replace('╰・', '\n╰・')
+        
         # Handle both single-line and multi-line formats
         # Split potential single-line entries into separate lines
         text_parts = order_text.replace('FARE BREAKDOWN:', '\n')
@@ -1736,7 +1740,7 @@ def setup(bot: commands.Bot):
         
         for pattern in patterns_to_split:
             text_parts = text_parts.replace(' ' + pattern, '\n' + pattern)
-            text_parts = text_parts.replace('╰・' + pattern, '\n╰・' + pattern)
+            # Don't add ╰・ prefix here since we already handled it above
         
         lines = text_parts.split('\n')
         
@@ -1747,9 +1751,6 @@ def setup(bot: commands.Bot):
         final_total = 0.0
         temp_total = 0.0  # For storing "Total:" value temporarily
         cart_items = []  # Store cart items
-        
-        # DEBUG: Create a debug message
-        debug_lines = ["**DEBUG INFO:**"]
         
         # Detect which format and parse accordingly
         is_format_two = ':rice:' in order_text or ':cashmachine:' in order_text
@@ -1790,18 +1791,14 @@ def setup(bot: commands.Bot):
                         cart_items.append('• ' + line if not line.startswith('•') else line)
             
             # Parse subtotal (including "Estimated Subtotal")
-            elif ('subtotal:' in line_lower or 'estimated subtotal:' in line_lower) and 'cart' not in line_lower:  # Avoid cart items line
-                debug_lines.append(f"Found subtotal line: `{line}`")
+            if ('subtotal:' in line_lower or 'estimated subtotal:' in line_lower) and 'cart' not in line_lower:  # Avoid cart items line
                 if '╰・' in line:
                     # Format 2: ╰・Subtotal: $24.80
                     # Remove the ╰・ prefix and any extra spaces
                     clean_line = line.replace('╰・', '').strip()
-                    debug_lines.append(f"Cleaned line: `{clean_line}`")
                     parts = clean_line.split(':', 1)
-                    debug_lines.append(f"Split parts: {parts}")
                     if len(parts) > 1:
                         subtotal = parse_money(parts[1])
-                        debug_lines.append(f"Parsed subtotal: ${subtotal}")
                 else:
                     # Format 1: Subtotal: $28.08
                     # Split on the last colon to handle any prefixes
@@ -1811,13 +1808,11 @@ def setup(bot: commands.Bot):
             
             # Parse delivery fee
             elif 'delivery fee:' in line_lower:
-                debug_lines.append(f"Found delivery line: `{line}`")
                 if '╰・' in line:
                     clean_line = line.replace('╰・', '').strip()
                     parts = clean_line.split(':', 1)
                     if len(parts) > 1:
                         delivery_fee = parse_money(parts[1])
-                        debug_lines.append(f"Parsed delivery: ${delivery_fee}")
                 else:
                     colon_idx = line.rfind(':')
                     if colon_idx != -1:
@@ -1826,13 +1821,11 @@ def setup(bot: commands.Bot):
             
             # Parse taxes & fees
             elif 'taxes' in line_lower and ('fees' in line_lower or 'other' in line_lower):
-                debug_lines.append(f"Found taxes line: `{line}`")
                 if '╰・' in line:
                     clean_line = line.replace('╰・', '').strip()
                     parts = clean_line.split(':', 1)
                     if len(parts) > 1:
                         taxes_fees = parse_money(parts[1])
-                        debug_lines.append(f"Parsed taxes: ${taxes_fees}")
                 else:
                     colon_idx = line.rfind(':')
                     if colon_idx != -1:
@@ -1845,7 +1838,6 @@ def setup(bot: commands.Bot):
                 if colon_idx != -1:
                     final_total = parse_money(line[colon_idx + 1:])
             elif 'final total:' in line_lower:
-                debug_lines.append(f"Found final total line: `{line}`")
                 # Format 2
                 if '╰・' in line:
                     clean_line = line.replace('╰・', '').strip()
@@ -1855,7 +1847,6 @@ def setup(bot: commands.Bot):
                         parsed_value = parse_money(value_str)
                         if parsed_value > 0:
                             final_total = parsed_value
-                            debug_lines.append(f"Parsed final total: ${final_total}")
                 else:
                     colon_idx = line.rfind(':')
                     if colon_idx != -1:
@@ -1873,15 +1864,76 @@ def setup(bot: commands.Bot):
         if final_total == 0.0 and temp_total != 0.0:
             final_total = temp_total
         
+        # Backup regex parsing for final total if still 0
+        if final_total == 0.0:
+            import re
+            # Try to find "Total After Tip" first
+            after_tip_match = re.search(r'Total After Tip:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+            if after_tip_match:
+                final_total = parse_money(after_tip_match.group(1))
+            else:
+                # Try "Final Total"
+                final_match = re.search(r'Final Total:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+                if final_match:
+                    final_total = parse_money(final_match.group(1))
+                else:
+                    # Last resort - just "Total:" but not "Subtotal:"
+                    total_match = re.search(r'(?<!Sub)Total:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+                    if total_match:
+                        final_total = parse_money(total_match.group(1))
+        
         # Calculate original total
         original_total = subtotal + delivery_fee + taxes_fees
         
-        debug_lines.append(f"\n**Parsed Values:**")
-        debug_lines.append(f"Subtotal: ${subtotal}")
-        debug_lines.append(f"Delivery: ${delivery_fee}")
-        debug_lines.append(f"Taxes: ${taxes_fees}")
-        debug_lines.append(f"Final Total: ${final_total}")
-        debug_lines.append(f"Original Total: ${original_total}")
+        # If no cart items found, try regex approach
+        if not cart_items:
+            import re
+            # First check if CART ITEMS section exists
+            if 'CART ITEMS:' in order_text:
+                # Extract everything between CART ITEMS: and FARE BREAKDOWN:
+                cart_section_match = re.search(r'CART ITEMS:\s*(.*?)(?:FARE BREAKDOWN:|$)', order_text, re.IGNORECASE | re.DOTALL)
+                if cart_section_match:
+                    cart_text = cart_section_match.group(1)
+                    # Split by bullet points
+                    items = re.findall(r'•\s*([^•]+?)(?=\s*•|$)', cart_text)
+                    for item in items:
+                        item = item.strip()
+                        if item and '$' in item:
+                            cart_items.append('• ' + item)
+            
+            # Also check for format 2 items
+            if not cart_items and ('items in bag' in order_text.lower() or '🍚' in order_text):
+                # Find all ╰・ items that look like food (have quantity pattern)
+                # Match items like "1x: Rice Bowl" or "2x: Five Falafels"
+                # Stop when we hit Order Total or another section marker
+                food_items = re.findall(r'╰・(\d+x:[^╰<]+?)(?=\s*(?:╰・(?:\d+x:|Subtotal:|Promotion:|Delivery|Taxes|Uber Cash:|Tip:|Final Total:)|<:|Order Total|$))', order_text)
+                for item in food_items:
+                    item = item.strip()
+                    if item and not any(keyword in item.lower() for keyword in ['subtotal', 'promotion', 'delivery', 'taxes', 'uber', 'tip', 'total']):
+                        cart_items.append(item)
+        
+        # Debug: If original total is 0, something went wrong with parsing
+        if original_total == 0.0 and subtotal == 0.0:
+            # Try a more aggressive parsing approach
+            import re
+            
+            # Look for subtotal pattern anywhere in the text (including "Estimated Subtotal")
+            subtotal_match = re.search(r'(?:Estimated\s+)?Subtotal:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+            if subtotal_match:
+                subtotal = parse_money(subtotal_match.group(1))
+            
+            # Look for delivery fee
+            delivery_match = re.search(r'Delivery Fee:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+            if delivery_match:
+                delivery_fee = parse_money(delivery_match.group(1))
+            
+            # Look for taxes
+            taxes_match = re.search(r'Taxes (?:&|and) (?:Other )?Fees:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+            if taxes_match:
+                taxes_fees = parse_money(taxes_match.group(1))
+            
+            # Recalculate
+            original_total = subtotal + delivery_fee + taxes_fees
         
         # Parse tip amount
         tip_amount = 0.0
@@ -1920,9 +1972,8 @@ def setup(bot: commands.Bot):
         
         embed.description = description
         
-        # Send the debug info first
-        debug_message = "\n".join(debug_lines)
-        await interaction.response.send_message(debug_message, ephemeral=True)
+        # Send an ephemeral response to acknowledge the command
+        await interaction.response.send_message("Processing order...", ephemeral=True, delete_after=1)
         
         # Send the breakdown embed as a regular message in the channel (not as a response)
         await interaction.channel.send(embed=embed)
