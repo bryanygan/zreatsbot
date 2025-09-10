@@ -1938,42 +1938,37 @@ def setup(bot: commands.Bot):
             # Recalculate
             original_total = subtotal + delivery_fee + taxes_fees
         
-        # Parse tip amount - first check recent embeds, then use manual tip if provided
+        # Parse tip amount - first check ticket embed, then use manual tip if provided
         tip_amount = 0.0
         
-        # Try to get tip from recent webhook embeds first
+        # Try to get tip from ticket embed first
         try:
-            async for message in interaction.channel.history(limit=10):
-                if message.webhook_id and message.embeds:
-                    for embed in message.embeds:
-                        # Check if this is a webhook order embed
-                        field_names = {f.name for f in embed.fields}
-                        is_webhook, webhook_type = detect_webhook_type(embed, field_names)
-                        
-                        if is_webhook and webhook_type in ["order", "checkout"]:
-                            # Parse the webhook fields to get tip
-                            parsed_data = helpers.parse_webhook_fields(embed)
-                            if parsed_data.get('tip'):
-                                # Extract numeric tip value
-                                tip_str = parsed_data['tip']
-                                tip_cleaned = clean_tip_amount(tip_str)
-                                if tip_cleaned:
-                                    try:
-                                        tip_amount = float(tip_cleaned)
-                                        break  # Found a tip, stop searching
-                                    except ValueError:
-                                        pass
-                    if tip_amount > 0:
-                        break  # Found a tip from embeds, stop searching messages
+            ticket_embed = await fetch_ticket_embed(interaction.channel)
+            if ticket_embed:
+                # Look for Tip Amount field in the ticket embed
+                for field in ticket_embed.fields:
+                    if field.name and 'tip' in field.name.lower():
+                        # Extract numeric tip value
+                        tip_str = field.value
+                        if tip_str:
+                            # Clean the tip string - remove any non-numeric characters except decimal point
+                            tip_cleaned = re.sub(r'[^\d.]', '', tip_str)
+                            if tip_cleaned:
+                                try:
+                                    tip_amount = float(tip_cleaned)
+                                    break  # Found a tip, stop searching
+                                except ValueError:
+                                    pass
         except Exception:
             pass  # If anything fails, fall back to manual tip
         
-        # If no tip found in embeds or manual tip provided, use manual tip
-        if tip_amount == 0 and tip:
+        # If manual tip is provided, use it (override any tip found in embed)
+        if tip:
             try:
-                tip_amount = float(tip.strip())
+                manual_tip = float(tip.strip())
+                tip_amount = manual_tip  # Override with manual tip
             except ValueError:
-                tip_amount = 0.0
+                pass  # Keep the tip from embed if manual tip is invalid
         
         # Calculate new total with tip and service fee
         # Check if VIP for reduced service fee
