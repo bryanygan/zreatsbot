@@ -1705,22 +1705,46 @@ def setup(bot: commands.Bot):
     @app_commands.describe(
         order_text="Paste the order information here",
         tip="Optional tip amount (e.g., 2, 3.50)",
-        vip="Set to true for VIP pricing ($6 service fee instead of $7)"
+        vip="Enable VIP pricing ($6 service fee instead of $7)"
     )
-    async def z_command(interaction: discord.Interaction, order_text: str, tip: str = None, vip: str = None):
+    async def z_command(interaction: discord.Interaction, order_text: str, tip: str = None, vip: bool = False):
         """Parse order information and display breakdown with payment options"""
         
+        # Input validation
+        MAX_ORDER_TEXT_LENGTH = 10000  # Reasonable limit
+        
+        if len(order_text) > MAX_ORDER_TEXT_LENGTH:
+            return await interaction.response.send_message(
+                f"❌ Order text is too long (max {MAX_ORDER_TEXT_LENGTH} characters).", 
+                ephemeral=True
+            )
+        
+        if len(order_text.strip()) == 0:
+            return await interaction.response.send_message(
+                "❌ Order text cannot be empty.", 
+                ephemeral=True
+            )
+        
         def parse_money(value_str):
-            """Extract numeric value from money string"""
+            """Extract numeric value from money string with enhanced error handling"""
             if not value_str:
                 return 0.0
+            
             # Remove dollar signs, commas, and whitespace
             cleaned = value_str.replace('$', '').replace(',', '').strip()
+            
+            # Handle parentheses for negative values (like discounts)
+            if cleaned.startswith('(') and cleaned.endswith(')'):
+                cleaned = '-' + cleaned[1:-1]
+            
             # Handle negative values (like -$24.80 or $-24.80)
             cleaned = cleaned.replace('$-', '-').replace('-$', '-')
+            
             try:
-                return float(cleaned)
+                value = float(cleaned)
+                return value
             except ValueError:
+                print(f"Warning: Could not parse money value: {value_str}")
                 return 0.0
         
         # Parse the order text to extract values
@@ -1887,6 +1911,19 @@ def setup(bot: commands.Bot):
         # Calculate original total
         original_total = subtotal + delivery_fee + taxes_fees
         
+        # Order parsing validation
+        if subtotal == 0.0 and delivery_fee == 0.0 and taxes_fees == 0.0:
+            return await interaction.response.send_message(
+                "❌ Could not parse order information. Please ensure you've copied the complete order details including subtotal, delivery fee, and taxes.",
+                ephemeral=True
+            )
+        
+        if final_total == 0.0:
+            return await interaction.response.send_message(
+                "❌ Could not determine the final total. Please ensure the order includes 'Total After Tip:', 'Final Total:', or 'Total:' with the amount.",
+                ephemeral=True
+            )
+        
         # If no cart items found, try regex approach
         if not cart_items:
             # First check if CART ITEMS section exists
@@ -1936,7 +1973,7 @@ def setup(bot: commands.Bot):
                 taxes_fees = parse_money(taxes_match.group(1))
             
             # Recalculate
-            original_total = subtotal + delivery_fee + taxes_fees
+            original_total = subtotal + delivery_fee + taxes_fees + 3.49 # funny number to inflate price and/or comp for uber one discounts
         
         # Parse tip amount - first check ticket embed, then use manual tip if provided
         tip_amount = 0.0
@@ -1959,21 +1996,53 @@ def setup(bot: commands.Bot):
                                     break  # Found a tip, stop searching
                                 except ValueError:
                                     pass
-        except Exception:
-            pass  # If anything fails, fall back to manual tip
+        except discord.HTTPException as e:
+            print(f"Failed to fetch ticket embed: {e}")
+            # Continue with manual tip if provided
+        except Exception as e:
+            print(f"Unexpected error fetching ticket embed: {e}")
+            # Continue with manual tip if provided
         
         # If manual tip is provided, use it (override any tip found in embed)
         if tip:
+            tip = tip.strip()
+            # Handle different formats: "$5", "5.00", "5", "$5.00"
+            tip_cleaned = tip.replace('$', '').replace(',', '').strip()
+            
             try:
-                manual_tip = float(tip.strip())
+                manual_tip = float(tip_cleaned)
+                if manual_tip < 0:
+                    return await interaction.response.send_message(
+                        "❌ Tip amount cannot be negative.", 
+                        ephemeral=True
+                    )
+                if manual_tip > 100:  # Sanity check
+                    return await interaction.response.send_message(
+                        f"⚠️ Large tip amount detected: ${manual_tip:.2f}. Please confirm this is correct by running the command again.",
+                        ephemeral=True
+                    )
                 tip_amount = manual_tip  # Override with manual tip
             except ValueError:
-                pass  # Keep the tip from embed if manual tip is invalid
+                # Send initial response first
+                await interaction.response.send_message("Processing order...", ephemeral=True)
+                await interaction.followup.send(
+                    f"⚠️ Invalid tip format '{tip}'. Using tip from ticket or defaulting to $0.",
+                    ephemeral=True
+                )
+        
+        # Division by zero and negative value protection
+        if final_total < 0:
+            return await interaction.response.send_message(
+                "❌ Invalid order total detected. Please check the order information.", 
+                ephemeral=True
+            )
+        
+        # Validate service fee
+        service_fee = 6.0 if vip else 7.0
+        if service_fee < 0:
+            service_fee = 7.0  # Default to standard fee
         
         # Calculate new total with tip and service fee
-        # Check if VIP for reduced service fee
-        is_vip = vip and vip.lower() == 'true'
-        service_fee = 6.0 if is_vip else 7.0
         new_total = final_total + tip_amount + service_fee
         
         # Create the breakdown embed
@@ -1985,8 +2054,13 @@ def setup(bot: commands.Bot):
         # Build the description
         description = ""
         
-        # Add cart items if found
+        # Add cart items if found (with validation)
         if cart_items:
+            # Validate cart items
+            if len(cart_items) > 50:  # Sanity check
+                cart_items = cart_items[:50]  # Truncate to reasonable amount
+                cart_items.append("... and more items")
+            
             description += "**Cart Items:**\n"
             for item in cart_items:
                 description += f"{item}\n"
@@ -1999,11 +2073,33 @@ def setup(bot: commands.Bot):
         
         embed.description = description
         
-        # Send an ephemeral response to acknowledge the command
-        await interaction.response.send_message("Processing order...", ephemeral=True, delete_after=1)
+        # Improved response handling with timeout protection
+        try:
+            # Check if we haven't already sent a response (from tip validation error)
+            if not interaction.response.is_done():
+                await interaction.response.send_message("Processing order...", ephemeral=True)
+        except discord.errors.NotFound:
+            # Interaction already expired
+            return
+        except discord.HTTPException as e:
+            print(f"Failed to send initial response: {e}")
+            return
         
-        # Send the breakdown embed as a regular message in the channel (not as a response)
-        await interaction.channel.send(embed=embed)
+        # Send the breakdown embed as a regular message in the channel
+        try:
+            await interaction.channel.send(embed=embed)
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "❌ I don't have permission to send messages in this channel.", 
+                ephemeral=True
+            )
+            return
+        except discord.HTTPException as e:
+            await interaction.followup.send(
+                f"❌ Failed to send order breakdown: {str(e)}", 
+                ephemeral=True
+            )
+            return
         
         # Now trigger the payments functionality
         # Import PaymentView the same way the payments command does
