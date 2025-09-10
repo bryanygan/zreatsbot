@@ -1911,6 +1911,98 @@ def setup(bot: commands.Bot):
         # Calculate original total
         original_total = subtotal + delivery_fee + taxes_fees
         
+        # Check if order total is under $15 - require confirmation
+        if original_total < 15.0:
+            # Create confirmation embed with order breakdown
+            confirmation_embed = discord.Embed(
+                title="⚠️ Low Order Total - Confirmation Required",
+                color=discord.Color.orange()
+            )
+            
+            # Build the description with breakdown
+            conf_description = f"**Order Total: ${original_total:.2f}**\n\n"
+            conf_description += f"Subtotal: ${subtotal:.2f}\n"
+            conf_description += f"Delivery Fee: ${delivery_fee:.2f}\n"
+            conf_description += f"Taxes & Fees: ${taxes_fees:.2f}\n\n"
+            conf_description += "This order total seems low. Please confirm if this is correct before proceeding."
+            
+            confirmation_embed.description = conf_description
+            
+            # Create confirmation view with button
+            class OrderConfirmationView(discord.ui.View):
+                def __init__(self, original_embed_data, tip_amt, new_tot):
+                    super().__init__(timeout=300)  # 5 minute timeout
+                    self.original_embed_data = original_embed_data
+                    self.tip_amount = tip_amt
+                    self.new_total = new_tot
+                
+                @discord.ui.button(label="✅ Confirm Order", style=discord.ButtonStyle.green)
+                async def confirm_order(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    # Proceed with original logic
+                    embed = discord.Embed(
+                        title="Order Breakdown:",
+                        color=discord.Color.green()
+                    )
+                    embed.description = self.original_embed_data
+                    
+                    try:
+                        await interaction.channel.send(embed=embed)
+                        await interaction.response.send_message("✅ Order confirmed and processed!", ephemeral=True)
+                        
+                        # Trigger payments functionality
+                        from ..views import PaymentView as PV
+                        payment_view = PV()
+                        payment_embed = discord.Embed(
+                            title="Prin's Payments",
+                            description="Select which payment method you would like to use! (Zelle/Crypto is preferred)",
+                            color=0x00ff00
+                        )
+                        await interaction.channel.send(embed=payment_embed, view=payment_view)
+                        
+                    except discord.HTTPException as e:
+                        await interaction.response.send_message(f"❌ Error processing order: {str(e)}", ephemeral=True)
+                
+                @discord.ui.button(label="❌ Cancel", style=discord.ButtonStyle.red)
+                async def cancel_order(self, interaction: discord.Interaction, button: discord.ui.Button):
+                    await interaction.response.send_message("❌ Order cancelled.", ephemeral=True)
+                    # Disable all buttons
+                    for item in self.children:
+                        item.disabled = True
+                    await interaction.edit_original_response(view=self)
+            
+            # Prepare the embed data for confirmation callback (we need to calculate this early)
+            embed_description = ""
+            if cart_items:
+                if len(cart_items) > 50:
+                    cart_items = cart_items[:50]
+                    cart_items.append("... and more items")
+                embed_description += "**Cart Items:**\n"
+                for item in cart_items:
+                    embed_description += f"{item}\n"
+                embed_description += "\n"
+            
+            # Calculate service fee and new total early for confirmation
+            service_fee = 6.0 if vip else 7.0
+            new_total = final_total + tip_amount + service_fee
+            
+            embed_description += f"Your original total + taxes + Uber fees: ${original_total:.2f}\n\n"
+            embed_description += "**Promo Discount + Service Fee successfully applied!**\n\n"
+            embed_description += f"Tip amount: ${tip_amount:.2f}\n\n"
+            embed_description += f"Your new total: **${new_total:.2f}**"
+            
+            confirmation_view = OrderConfirmationView(embed_description, tip_amount, new_total)
+            
+            # Send confirmation instead of proceeding
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(embed=confirmation_embed, view=confirmation_view, ephemeral=True)
+                else:
+                    await interaction.followup.send(embed=confirmation_embed, view=confirmation_view, ephemeral=True)
+            except discord.HTTPException as e:
+                await interaction.followup.send(f"❌ Error sending confirmation: {str(e)}", ephemeral=True)
+            
+            return  # Exit early, don't proceed with normal flow
+        
         # Order parsing validation
         if subtotal == 0.0 and delivery_fee == 0.0 and taxes_fees == 0.0:
             return await interaction.response.send_message(
