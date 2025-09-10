@@ -1869,7 +1869,6 @@ def setup(bot: commands.Bot):
         
         # Backup regex parsing for final total if still 0
         if final_total == 0.0:
-            import re
             # Try to find "Total After Tip" first
             after_tip_match = re.search(r'Total After Tip:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
             if after_tip_match:
@@ -1890,7 +1889,6 @@ def setup(bot: commands.Bot):
         
         # If no cart items found, try regex approach
         if not cart_items:
-            import re
             # First check if CART ITEMS section exists
             if 'CART ITEMS:' in order_text:
                 # Extract everything between CART ITEMS: and FARE BREAKDOWN:
@@ -1921,7 +1919,6 @@ def setup(bot: commands.Bot):
         # Debug: If original total is 0, something went wrong with parsing
         if original_total == 0.0 and subtotal == 0.0:
             # Try a more aggressive parsing approach
-            import re
             
             # Look for subtotal pattern anywhere in the text (including "Estimated Subtotal")
             subtotal_match = re.search(r'(?:Estimated\s+)?Subtotal:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
