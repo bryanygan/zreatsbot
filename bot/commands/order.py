@@ -1978,11 +1978,19 @@ def setup(bot: commands.Bot):
                 color=discord.Color.blue()
             )
             
+            # Calculate service fee and new total for display
+            service_fee = 6.0 if vip else 7.0
+            new_total = final_total + tip_amount + service_fee
+            
             # Build the description with breakdown
             conf_description = f"**Order Total: ${original_total:.2f}**\n\n"
             conf_description += f"Subtotal: ${subtotal:.2f}\n"
             conf_description += f"Delivery Fee: ${delivery_fee:.2f}\n"
             conf_description += f"Taxes & Fees: ${taxes_fees:.2f}\n\n"
+            conf_description += f"**After Promo & Service Fee Applied:**\n"
+            conf_description += f"Tip Amount: ${tip_amount:.2f}\n"
+            conf_description += f"Service Fee: ${service_fee:.2f}\n"
+            conf_description += f"**Your New Total: ${new_total:.2f}**\n\n"
             conf_description += "Please review the order details and confirm to proceed."
             
             confirmation_embed.description = conf_description
@@ -2017,6 +2025,14 @@ def setup(bot: commands.Bot):
                             color=0x00ff00
                         )
                         await interaction.channel.send(embed=payment_embed, view=payment_view)
+                        
+                        # Send payment instructions
+                        instructions_embed = discord.Embed(
+                            title="Payment Instructions",
+                            description="When paying, please don't add any notes. Only single emojis or a period (.) if necessary. **Always** send as Friends and Family if using PayPal, Venmo, or Zelle. Please ping <@745694160002089130> when paid!",
+                            color=0x00ff00
+                        )
+                        await interaction.channel.send(embed=instructions_embed)
                         
                     except discord.HTTPException as e:
                         await interaction.response.send_message(f"❌ Error processing order: {str(e)}", ephemeral=True)
@@ -2209,3 +2225,11 @@ def setup(bot: commands.Bot):
         
         # Send the payment embed as a regular message in the channel
         await interaction.channel.send(embed=payment_embed, view=payment_view)
+        
+        # Send payment instructions
+        instructions_embed = discord.Embed(
+            title="Payment Instructions",
+            description="When paying, please don't add any notes. Only single emojis or a period (.) if necessary. **Always** send as Friends and Family if using PayPal, Venmo, or Zelle. Please ping <@745694160002089130> when paid!",
+            color=0x9932cc
+        )
+        await interaction.channel.send(embed=instructions_embed)
