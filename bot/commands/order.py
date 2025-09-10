@@ -1790,7 +1790,9 @@ def setup(bot: commands.Bot):
             elif ('subtotal:' in line_lower or 'estimated subtotal:' in line_lower) and 'cart' not in line_lower:  # Avoid cart items line
                 if '╰・' in line:
                     # Format 2: ╰・Subtotal: $24.80
-                    parts = line.split(':', 1)
+                    # Remove the ╰・ prefix and any extra spaces
+                    clean_line = line.replace('╰・', '').strip()
+                    parts = clean_line.split(':', 1)
                     if len(parts) > 1:
                         subtotal = parse_money(parts[1])
                 else:
@@ -1803,7 +1805,8 @@ def setup(bot: commands.Bot):
             # Parse delivery fee
             elif 'delivery fee:' in line_lower:
                 if '╰・' in line:
-                    parts = line.split(':', 1)
+                    clean_line = line.replace('╰・', '').strip()
+                    parts = clean_line.split(':', 1)
                     if len(parts) > 1:
                         delivery_fee = parse_money(parts[1])
                 else:
@@ -1815,7 +1818,8 @@ def setup(bot: commands.Bot):
             # Parse taxes & fees
             elif 'taxes' in line_lower and ('fees' in line_lower or 'other' in line_lower):
                 if '╰・' in line:
-                    parts = line.split(':', 1)
+                    clean_line = line.replace('╰・', '').strip()
+                    parts = clean_line.split(':', 1)
                     if len(parts) > 1:
                         taxes_fees = parse_money(parts[1])
                 else:
@@ -1831,12 +1835,21 @@ def setup(bot: commands.Bot):
                     final_total = parse_money(line[colon_idx + 1:])
             elif 'final total:' in line_lower:
                 # Format 2
-                colon_idx = line.rfind(':')
-                if colon_idx != -1:
-                    value_str = line[colon_idx + 1:].strip()
-                    parsed_value = parse_money(value_str)
-                    if parsed_value > 0:
-                        final_total = parsed_value
+                if '╰・' in line:
+                    clean_line = line.replace('╰・', '').strip()
+                    parts = clean_line.split(':', 1)
+                    if len(parts) > 1:
+                        value_str = parts[1].strip()
+                        parsed_value = parse_money(value_str)
+                        if parsed_value > 0:
+                            final_total = parsed_value
+                else:
+                    colon_idx = line.rfind(':')
+                    if colon_idx != -1:
+                        value_str = line[colon_idx + 1:].strip()
+                        parsed_value = parse_money(value_str)
+                        if parsed_value > 0:
+                            final_total = parsed_value
             elif line_lower.startswith('total:') and 'subtotal' not in line_lower and 'final' not in line_lower:
                 # Handle "Total: $3.84" format - store temporarily
                 parts = line.split(':', 1)
