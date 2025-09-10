@@ -81,7 +81,7 @@ def setup(bot: commands.Bot):
         else:
             card_result = bot.get_and_remove_card()
             if card_result is None:
-                return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
+                return await interaction.followup.send("❌ Card pool is empty.", ephemeral=True)
             if len(card_result) == 3:
                 number, cvv, was_last_card = card_result
                 card = (number, cvv)
@@ -499,9 +499,12 @@ def setup(bot: commands.Bot):
         if card_cvv and not card_number:
             return await interaction.response.send_message("❌ Card number required when using custom CVV.", ephemeral=True)
 
+        # Send initial response to prevent timeout
+        await interaction.response.send_message("🔄 Working on your Fusion order...", ephemeral=True)
+
         embed = await fetch_ticket_embed(interaction.channel)
         if embed is None:
-            return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
+            return await interaction.followup.send("❌ Could not find order embed.", ephemeral=True)
 
         info = parse_fields(embed)
 
@@ -513,7 +516,7 @@ def setup(bot: commands.Bot):
         else:
             card_result = bot.get_and_remove_card()
             if card_result is None:
-                return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
+                return await interaction.followup.send("❌ Card pool is empty.", ephemeral=True)
             if len(card_result) == 3:
                 number, cvv, was_last_card = card_result
                 card = (number, cvv)
@@ -531,7 +534,7 @@ def setup(bot: commands.Bot):
         else:
             email_result = bot.get_and_remove_email('main')
             if email_result is None:
-                return await interaction.response.send_message("❌ Main email pool is empty.", ephemeral=True)
+                return await interaction.followup.send("❌ Main email pool is empty.", ephemeral=True)
             email = email_result
             email_source = "pool"
             pool_counts = bot.get_pool_counts()
@@ -732,7 +735,7 @@ def setup(bot: commands.Bot):
         else:
             card_result = bot.get_and_remove_card()
             if card_result is None:
-                return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
+                return await interaction.followup.send("❌ Card pool is empty.", ephemeral=True)
             if len(card_result) == 3:
                 number, cvv, was_last_card = card_result
                 card = (number, cvv)
@@ -750,7 +753,7 @@ def setup(bot: commands.Bot):
         else:
             email_result = bot.get_and_remove_email('main')
             if email_result is None:
-                return await interaction.response.send_message("❌ Main email pool is empty.", ephemeral=True)
+                return await interaction.followup.send("❌ Main email pool is empty.", ephemeral=True)
             email = email_result
             email_source = "pool"
             pool_counts = bot.get_pool_counts()
@@ -843,7 +846,7 @@ def setup(bot: commands.Bot):
         else:
             card_result = bot.get_and_remove_card()
             if card_result is None:
-                return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
+                return await interaction.followup.send("❌ Card pool is empty.", ephemeral=True)
             if len(card_result) == 3:
                 number, cvv, was_last_card = card_result
                 card = (number, cvv)
