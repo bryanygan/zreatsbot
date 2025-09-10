@@ -1710,6 +1710,10 @@ def setup(bot: commands.Bot):
     async def z_command(interaction: discord.Interaction, order_text: str, tip: str = None, vip: bool = False):
         """Parse order information and display breakdown with payment options"""
         
+        # Authorization check
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ You are not authorized.", ephemeral=True)
+        
         # Input validation
         MAX_ORDER_TEXT_LENGTH = 10000  # Reasonable limit
         
@@ -1966,12 +1970,12 @@ def setup(bot: commands.Bot):
                     ephemeral=True
                 )
         
-        # Check if order total is under $15 - require confirmation
-        if original_total < 15.0:
+        # Always require confirmation for all orders
+        if True:  # Show confirmation for all orders
             # Create confirmation embed with order breakdown
             confirmation_embed = discord.Embed(
-                title="⚠️ Low Order Total - Confirmation Required",
-                color=discord.Color.orange()
+                title="📋 Order Confirmation Required",
+                color=discord.Color.blue()
             )
             
             # Build the description with breakdown
@@ -1979,7 +1983,7 @@ def setup(bot: commands.Bot):
             conf_description += f"Subtotal: ${subtotal:.2f}\n"
             conf_description += f"Delivery Fee: ${delivery_fee:.2f}\n"
             conf_description += f"Taxes & Fees: ${taxes_fees:.2f}\n\n"
-            conf_description += "This order total seems low. Please confirm if this is correct before proceeding."
+            conf_description += "Please review the order details and confirm to proceed."
             
             confirmation_embed.description = conf_description
             
