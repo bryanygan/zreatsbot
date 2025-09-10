@@ -1795,7 +1795,7 @@ def setup(bot: commands.Bot):
         
         # Handle both single-line and multi-line formats
         # Split potential single-line entries into separate lines
-        text_parts = order_text.replace('FARE BREAKDOWN:', '\n')
+        text_parts = order_text.replace('FARE BREAKDOWN:', '\nFARE BREAKDOWN:').replace('CART ITEMS:', '\nCART ITEMS:')
         
         # Common patterns that should be on new lines
         patterns_to_split = [
@@ -1832,6 +1832,16 @@ def setup(bot: commands.Bot):
             # Check for cart items section
             if 'cart items:' in line_lower or 'items in bag:' in line_lower:
                 in_cart_section = True
+                # Handle case where cart items are on the same line as the header
+                if ':' in line and len(line.split(':', 1)) > 1:
+                    items_part = line.split(':', 1)[1].strip()
+                    if items_part and '•' in items_part:
+                        # Split on bullet points and add each item
+                        items = items_part.split('•')
+                        for item in items:
+                            item = item.strip()
+                            if item and ('(' in item and ')' in item) or ('x' in item and '$' in item):
+                                cart_items.append('• ' + item)
                 continue
             elif 'fare breakdown:' in line_lower or 'order total:' in line_lower:
                 in_cart_section = False
@@ -1855,7 +1865,8 @@ def setup(bot: commands.Bot):
                         in_cart_section = False
                 elif line and not any(keyword in line_lower for keyword in ['subtotal:', 'promotion:', 'delivery', 'taxes', 'total:', 'fare', 'order']):
                     # Also capture items that might not start with bullets but are in cart section
-                    if '(' in line and ')' in line and '$' in line:  # Likely a cart item
+                    # Handle format: "Al Pastor Taco (x8) - $26.00"
+                    if ('(' in line and ')' in line and '$' in line) or ('(x' in line and ')' in line and '-' in line):  # Likely a cart item
                         cart_items.append('• ' + line if not line.startswith('•') else line)
             
             # Parse subtotal (including "Estimated Subtotal")
