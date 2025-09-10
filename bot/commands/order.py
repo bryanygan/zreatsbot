@@ -1911,6 +1911,61 @@ def setup(bot: commands.Bot):
         # Calculate original total
         original_total = subtotal + delivery_fee + taxes_fees + 3.49
         
+        # Parse tip amount - first check ticket embed, then use manual tip if provided
+        tip_amount = 0.0
+        
+        # Try to get tip from ticket embed first
+        try:
+            ticket_embed = await fetch_ticket_embed(interaction.channel)
+            if ticket_embed:
+                # Look for Tip Amount field in the ticket embed
+                for field in ticket_embed.fields:
+                    if field.name and 'tip' in field.name.lower():
+                        # Extract numeric tip value
+                        tip_str = field.value
+                        if tip_str:
+                            # Clean the tip string - remove any non-numeric characters except decimal point
+                            tip_cleaned = re.sub(r'[^\d.]', '', tip_str)
+                            if tip_cleaned:
+                                try:
+                                    tip_amount = float(tip_cleaned)
+                                    break  # Found a tip, stop searching
+                                except ValueError:
+                                    pass
+        except discord.HTTPException as e:
+            print(f"Failed to fetch ticket embed: {e}")
+            # Continue with manual tip if provided
+        except Exception as e:
+            print(f"Unexpected error fetching ticket embed: {e}")
+            # Continue with manual tip if provided
+        
+        # If manual tip is provided, use it (override any tip found in embed)
+        if tip:
+            tip = tip.strip()
+            # Handle different formats: "$5", "5.00", "5", "$5.00"
+            tip_cleaned = tip.replace('$', '').replace(',', '').strip()
+            
+            try:
+                manual_tip = float(tip_cleaned)
+                if manual_tip < 0:
+                    return await interaction.response.send_message(
+                        "❌ Tip amount cannot be negative.", 
+                        ephemeral=True
+                    )
+                if manual_tip > 100:  # Sanity check
+                    return await interaction.response.send_message(
+                        f"⚠️ Large tip amount detected: ${manual_tip:.2f}. Please confirm this is correct by running the command again.",
+                        ephemeral=True
+                    )
+                tip_amount = manual_tip  # Override with manual tip
+            except ValueError:
+                # Send initial response first
+                await interaction.response.send_message("Processing order...", ephemeral=True)
+                await interaction.followup.send(
+                    f"⚠️ Invalid tip format '{tip}'. Using tip from ticket or defaulting to $0.",
+                    ephemeral=True
+                )
+        
         # Check if order total is under $15 - require confirmation
         if original_total < 15.0:
             # Create confirmation embed with order breakdown
@@ -2066,61 +2121,6 @@ def setup(bot: commands.Bot):
             
             # Recalculate
             original_total = subtotal + delivery_fee + taxes_fees + 3.49
-        
-        # Parse tip amount - first check ticket embed, then use manual tip if provided
-        tip_amount = 0.0
-        
-        # Try to get tip from ticket embed first
-        try:
-            ticket_embed = await fetch_ticket_embed(interaction.channel)
-            if ticket_embed:
-                # Look for Tip Amount field in the ticket embed
-                for field in ticket_embed.fields:
-                    if field.name and 'tip' in field.name.lower():
-                        # Extract numeric tip value
-                        tip_str = field.value
-                        if tip_str:
-                            # Clean the tip string - remove any non-numeric characters except decimal point
-                            tip_cleaned = re.sub(r'[^\d.]', '', tip_str)
-                            if tip_cleaned:
-                                try:
-                                    tip_amount = float(tip_cleaned)
-                                    break  # Found a tip, stop searching
-                                except ValueError:
-                                    pass
-        except discord.HTTPException as e:
-            print(f"Failed to fetch ticket embed: {e}")
-            # Continue with manual tip if provided
-        except Exception as e:
-            print(f"Unexpected error fetching ticket embed: {e}")
-            # Continue with manual tip if provided
-        
-        # If manual tip is provided, use it (override any tip found in embed)
-        if tip:
-            tip = tip.strip()
-            # Handle different formats: "$5", "5.00", "5", "$5.00"
-            tip_cleaned = tip.replace('$', '').replace(',', '').strip()
-            
-            try:
-                manual_tip = float(tip_cleaned)
-                if manual_tip < 0:
-                    return await interaction.response.send_message(
-                        "❌ Tip amount cannot be negative.", 
-                        ephemeral=True
-                    )
-                if manual_tip > 100:  # Sanity check
-                    return await interaction.response.send_message(
-                        f"⚠️ Large tip amount detected: ${manual_tip:.2f}. Please confirm this is correct by running the command again.",
-                        ephemeral=True
-                    )
-                tip_amount = manual_tip  # Override with manual tip
-            except ValueError:
-                # Send initial response first
-                await interaction.response.send_message("Processing order...", ephemeral=True)
-                await interaction.followup.send(
-                    f"⚠️ Invalid tip format '{tip}'. Using tip from ticket or defaulting to $0.",
-                    ephemeral=True
-                )
         
         # Division by zero and negative value protection
         if final_total < 0:
