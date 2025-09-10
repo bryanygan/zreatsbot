@@ -67,17 +67,9 @@ def setup(bot: commands.Bot):
         if card_cvv and not card_number:
             return await interaction.response.send_message("❌ Card number required when using custom CVV.", ephemeral=True)
 
-        # Send initial response to prevent timeout
-        try:
-            await interaction.response.send_message("Processing fusion assist...", ephemeral=True)
-        except discord.errors.NotFound:
-            return
-        except discord.HTTPException:
-            return
-
         embed = await fetch_ticket_embed(interaction.channel)
         if embed is None:
-            return await interaction.followup.send("❌ Could not find order embed.", ephemeral=True)
+            return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
         info = parse_fields(embed)
 
@@ -89,7 +81,7 @@ def setup(bot: commands.Bot):
         else:
             card_result = bot.get_and_remove_card()
             if card_result is None:
-                return await interaction.followup.send("❌ Card pool is empty.", ephemeral=True)
+                return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
             if len(card_result) == 3:
                 number, cvv, was_last_card = card_result
                 card = (number, cvv)
@@ -152,15 +144,7 @@ def setup(bot: commands.Bot):
         footer_parts.extend(warnings)
         embed.set_footer(text=" | ".join(footer_parts))
         
-        # Handle interaction timeout for final response
-        try:
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        except discord.errors.NotFound:
-            print("Fusion assist interaction expired")
-            return
-        except discord.HTTPException as e:
-            print(f"Failed to send fusion assist response: {e}")
-            return
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name='debug_embed_details', description='Show detailed embed structure for debugging')
     async def debug_embed_details(interaction: discord.Interaction, message_id: str = None, search_limit: int = 5):
@@ -479,17 +463,9 @@ def setup(bot: commands.Bot):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ You are not authorized.", ephemeral=True)
 
-        # Send initial response to prevent timeout
-        try:
-            await interaction.response.send_message("Loading wool details...", ephemeral=True)
-        except discord.errors.NotFound:
-            return
-        except discord.HTTPException:
-            return
-
         embed = await fetch_ticket_embed(interaction.channel)
         if embed is None:
-            return await interaction.followup.send("❌ Could not find order embed.", ephemeral=True)
+            return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
         info = parse_fields(embed)
 
@@ -505,15 +481,7 @@ def setup(bot: commands.Bot):
             details.add_field(name="Delivery Notes:", value=f"```{info['notes']}```", inline=False)
         details.add_field(name="Tip:", value=f"```{clean_tip_amount(info['tip'])}```", inline=False)
 
-        # Handle interaction timeout for final response
-        try:
-            await interaction.followup.send(embed=details, ephemeral=True)
-        except discord.errors.NotFound:
-            print("Wool details interaction expired")
-            return
-        except discord.HTTPException as e:
-            print(f"Failed to send wool details response: {e}")
-            return
+        await interaction.response.send_message(embed=details, ephemeral=True)
 
     @bot.tree.command(name='fusion_order', description='Format a Fusion order with email')
     @app_commands.describe(
@@ -531,17 +499,9 @@ def setup(bot: commands.Bot):
         if card_cvv and not card_number:
             return await interaction.response.send_message("❌ Card number required when using custom CVV.", ephemeral=True)
 
-        # Send initial response to prevent timeout
-        try:
-            await interaction.response.send_message("Processing fusion order...", ephemeral=True)
-        except discord.errors.NotFound:
-            return
-        except discord.HTTPException:
-            return
-
         embed = await fetch_ticket_embed(interaction.channel)
         if embed is None:
-            return await interaction.followup.send("❌ Could not find order embed.", ephemeral=True)
+            return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
         info = parse_fields(embed)
 
@@ -553,7 +513,7 @@ def setup(bot: commands.Bot):
         else:
             card_result = bot.get_and_remove_card()
             if card_result is None:
-                return await interaction.followup.send("❌ Card pool is empty.", ephemeral=True)
+                return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
             if len(card_result) == 3:
                 number, cvv, was_last_card = card_result
                 card = (number, cvv)
@@ -571,7 +531,7 @@ def setup(bot: commands.Bot):
         else:
             email_result = bot.get_and_remove_email('main')
             if email_result is None:
-                return await interaction.followup.send("❌ Main email pool is empty.", ephemeral=True)
+                return await interaction.response.send_message("❌ Main email pool is empty.", ephemeral=True)
             email = email_result
             email_source = "pool"
             pool_counts = bot.get_pool_counts()
@@ -623,15 +583,7 @@ def setup(bot: commands.Bot):
         footer_parts.extend(warnings)
         embed.set_footer(text=" | ".join(footer_parts))
 
-        # Handle interaction timeout for final response
-        try:
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        except discord.errors.NotFound:
-            print("Fusion order interaction expired")
-            return
-        except discord.HTTPException as e:
-            print(f"Failed to send fusion order response: {e}")
-            return
+        await interaction.response.send_message(embed=embed, ephemeral=True)
     
     @bot.tree.command(name='debug_stewardess_webhook', description='Debug the stewardess webhook specifically')
     async def debug_stewardess_webhook(interaction: discord.Interaction):
@@ -772,7 +724,7 @@ def setup(bot: commands.Bot):
         else:
             card_result = bot.get_and_remove_card()
             if card_result is None:
-                return await interaction.followup.send("❌ Card pool is empty.", ephemeral=True)
+                return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
             if len(card_result) == 3:
                 number, cvv, was_last_card = card_result
                 card = (number, cvv)
@@ -790,7 +742,7 @@ def setup(bot: commands.Bot):
         else:
             email_result = bot.get_and_remove_email('main')
             if email_result is None:
-                return await interaction.followup.send("❌ Main email pool is empty.", ephemeral=True)
+                return await interaction.response.send_message("❌ Main email pool is empty.", ephemeral=True)
             email = email_result
             email_source = "pool"
             pool_counts = bot.get_pool_counts()
@@ -868,17 +820,9 @@ def setup(bot: commands.Bot):
         if card_cvv and not card_number:
             return await interaction.response.send_message("❌ Card number required when using custom CVV.", ephemeral=True)
 
-        # Send initial response to prevent timeout
-        try:
-            await interaction.response.send_message("Processing pump order...", ephemeral=True)
-        except discord.errors.NotFound:
-            return
-        except discord.HTTPException:
-            return
-
         embed = await fetch_ticket_embed(interaction.channel)
         if embed is None:
-            return await interaction.followup.send("❌ Could not find order embed.", ephemeral=True)
+            return await interaction.response.send_message("❌ Could not find order embed.", ephemeral=True)
 
         info = parse_fields(embed)
 
@@ -891,7 +835,7 @@ def setup(bot: commands.Bot):
         else:
             card_result = bot.get_and_remove_card()
             if card_result is None:
-                return await interaction.followup.send("❌ Card pool is empty.", ephemeral=True)
+                return await interaction.response.send_message("❌ Card pool is empty.", ephemeral=True)
             if len(card_result) == 3:
                 number, cvv, was_last_card = card_result
                 card = (number, cvv)
@@ -963,15 +907,7 @@ def setup(bot: commands.Bot):
         footer_parts.extend(warnings)
         embed.set_footer(text=" | ".join(footer_parts))
         
-        # Handle interaction timeout for final response
-        try:
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        except discord.errors.NotFound:
-            print("Pump order interaction expired")
-            return
-        except discord.HTTPException as e:
-            print(f"Failed to send pump order response: {e}")
-            return
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name='payments', description='Display payment methods')
     async def payments(interaction: discord.Interaction):
@@ -2324,7 +2260,7 @@ def setup(bot: commands.Bot):
         # Send payment instructions
         instructions_embed = discord.Embed(
             title="Payment Instructions",
-            description="When paying, **please don't add any notes.** Only **single emojis** or a **period (.)** if necessary. **Always send as Friends and Family if using PayPal, Venmo, or Zelle**. Please ping <@745694160002089130> when paid!",
+            description="When paying, **please don't add any notes.** Only **single emojis** or a **period (.)** if necessary. **Always send as Friends and Family if using PayPal, Venmo, or Zelle**. After you pay, please send a screenshot of the payment confirmation and please ping <@745694160002089130>!",
             color=0x9932cc
         )
         await interaction.channel.send(embed=instructions_embed)
