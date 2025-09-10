@@ -2069,7 +2069,7 @@ def setup(bot: commands.Bot):
                         # Send payment instructions
                         instructions_embed = discord.Embed(
                             title="Payment Instructions",
-                            description="When paying, please don't add any notes. Only single emojis or a period (.) if necessary. **Always** send as Friends and Family if using PayPal, Venmo, or Zelle. Please ping <@745694160002089130> when paid!",
+                            description="When paying, please don't add any notes. Only single emojis or a period (.) if necessary. **Always** send as Friends and Family if using PayPal, Venmo, or Zelle. Please send a payment confirmation screenshot and ping <@745694160002089130> when paid!",
                             color=0x00ff00
                         )
                         await interaction.channel.send(embed=instructions_embed)
@@ -2097,7 +2097,10 @@ def setup(bot: commands.Bot):
                 embed_description += "\n"
             
             # Calculate service fee and new total early for confirmation
-            service_fee = 6.0 if vip else 7.0
+            if custom_service_fee is not None:
+                service_fee = custom_service_fee
+            else:
+                service_fee = 6.0 if vip else 7.0
             new_total = final_total + tip_amount + service_fee
             
             embed_description += f"Your original total + taxes + Uber fees: ${original_total:.2f}\n\n"
