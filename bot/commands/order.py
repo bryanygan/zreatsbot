@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import discord
+import re
 from discord import app_commands
 from discord.ext import commands
 
@@ -1781,7 +1782,9 @@ def setup(bot: commands.Bot):
                     # Check if this is a food item (has quantity pattern like "1x:" or "2x:")
                     # and not a subtotal/pricing line
                     if 'x:' in line and not any(keyword in line_lower for keyword in ['subtotal:', 'promotion:', 'delivery', 'taxes', 'total:', 'uber cash:', 'tip:']):
-                        cart_items.append(line)
+                        # Clean the line to remove any emoji markers and "Order" text
+                        clean_item = re.sub(r'\s*(?:<:.*?:\d+>|:.*?:)\s*Order.*$', '', line)
+                        cart_items.append(clean_item.strip())
                     else:
                         # This is a pricing line, exit cart section
                         in_cart_section = False
@@ -1908,6 +1911,9 @@ def setup(bot: commands.Bot):
                 # Stop when we hit Order Total or another section marker
                 food_items = re.findall(r'╰・(\d+x:[^╰<]+?)(?=\s*(?:╰・(?:\d+x:|Subtotal:|Promotion:|Delivery|Taxes|Uber Cash:|Tip:|Final Total:)|<:|Order Total|$))', order_text)
                 for item in food_items:
+                    item = item.strip()
+                    # Remove any emoji markers and "Order" text that might have been captured
+                    item = re.sub(r'\s*(?:<:.*?:\d+>|:.*?:)\s*Order.*$', '', item)
                     item = item.strip()
                     if item and not any(keyword in item.lower() for keyword in ['subtotal', 'promotion', 'delivery', 'taxes', 'uber', 'tip', 'total']):
                         cart_items.append(item)
