@@ -1738,10 +1738,10 @@ def setup(bot: commands.Bot):
     @bot.tree.command(name='z', description='Parse order information and display breakdown')
     @app_commands.describe(
         order_text="Paste the order information here",
-        tip="Optional tip amount (e.g., 2, 3.50)",
-        vip="Enable VIP pricing ($6 service fee instead of $7)"
+        vip="Enable VIP pricing ($6 service fee instead of $7)",
+        service_fee="Override service fee (default: $7.00, VIP: $6.00)"
     )
-    async def z_command(interaction: discord.Interaction, order_text: str, tip: str = None, vip: bool = False):
+    async def z_command(interaction: discord.Interaction, order_text: str, vip: bool = False, service_fee: str = None):
         """Parse order information and display breakdown with payment options"""
         
         # Authorization check
@@ -1977,30 +1977,30 @@ def setup(bot: commands.Bot):
             print(f"Unexpected error fetching ticket embed: {e}")
             # Continue with manual tip if provided
         
-        # If manual tip is provided, use it (override any tip found in embed)
-        if tip:
-            tip = tip.strip()
-            # Handle different formats: "$5", "5.00", "5", "$5.00"
-            tip_cleaned = tip.replace('$', '').replace(',', '').strip()
+        # Parse service fee override
+        custom_service_fee = None
+        if service_fee:
+            service_fee = service_fee.strip()
+            # Handle different formats: "$7", "7.00", "7", "$7.00"
+            service_fee_cleaned = service_fee.replace('$', '').replace(',', '').strip()
             
             try:
-                manual_tip = float(tip_cleaned)
-                if manual_tip < 0:
+                custom_service_fee = float(service_fee_cleaned)
+                if custom_service_fee < 0:
                     return await interaction.response.send_message(
-                        "❌ Tip amount cannot be negative.", 
+                        "❌ Service fee cannot be negative.", 
                         ephemeral=True
                     )
-                if manual_tip > 100:  # Sanity check
+                if custom_service_fee > 20:  # Sanity check
                     return await interaction.response.send_message(
-                        f"⚠️ Large tip amount detected: ${manual_tip:.2f}. Please confirm this is correct by running the command again.",
+                        f"⚠️ Large service fee detected: ${custom_service_fee:.2f}. Please confirm this is correct by running the command again.",
                         ephemeral=True
                     )
-                tip_amount = manual_tip  # Override with manual tip
             except ValueError:
                 # Send initial response first
                 await interaction.response.send_message("Processing order...", ephemeral=True)
                 await interaction.followup.send(
-                    f"⚠️ Invalid tip format '{tip}'. Using tip from ticket or defaulting to $0.",
+                    f"⚠️ Invalid service fee format '{service_fee}'. Using default service fee.",
                     ephemeral=True
                 )
         
@@ -2013,7 +2013,10 @@ def setup(bot: commands.Bot):
             )
             
             # Calculate service fee and new total for display
-            service_fee = 6.0 if vip else 7.0
+            if custom_service_fee is not None:
+                service_fee = custom_service_fee
+            else:
+                service_fee = 6.0 if vip else 7.0
             new_total = final_total + tip_amount + service_fee
             
             # Build the description with breakdown
@@ -2200,8 +2203,13 @@ def setup(bot: commands.Bot):
                 ephemeral=True
             )
         
+        # Calculate service fee (custom override, VIP, or default)
+        if custom_service_fee is not None:
+            service_fee = custom_service_fee
+        else:
+            service_fee = 6.0 if vip else 7.0
+        
         # Validate service fee
-        service_fee = 6.0 if vip else 7.0
         if service_fee < 0:
             service_fee = 7.0  # Default to standard fee
         
