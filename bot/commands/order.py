@@ -1983,38 +1983,36 @@ def setup(bot: commands.Bot):
         # Calculate original total
         original_total = subtotal + delivery_fee + taxes_fees + 3.49
         
-        # Parse tip amount - use tip from order text first, then check ticket embed
-        tip_amount = tip_from_order  # Use tip parsed from order text as default
+        # Parse tip amount - prioritize ticket embed over order text
+        # The ticket embed contains the current tip for this order, while order text shows historical tip
+        tip_amount = 0.0
 
-        # Only try ticket embed if we didn't find any tip info in order text at all
-        # Check if order text has tip/tipping references first
-        has_tip_in_order = 'tip:' in order_text.lower() or 'tipping amount:' in order_text.lower()
+        # First try to get tip from ticket embed
+        try:
+            ticket_embed = await fetch_ticket_embed(interaction.channel)
+            if ticket_embed:
+                # Look for Tip Amount field in the ticket embed
+                for field in ticket_embed.fields:
+                    if field.name and 'tip' in field.name.lower():
+                        # Extract numeric tip value
+                        tip_str = field.value
+                        if tip_str:
+                            # Clean the tip string - remove any non-numeric characters except decimal point
+                            tip_cleaned = re.sub(r'[^\d.]', '', tip_str)
+                            if tip_cleaned:
+                                try:
+                                    tip_amount = float(tip_cleaned)
+                                    break  # Found a tip, stop searching
+                                except ValueError:
+                                    pass
+        except discord.HTTPException as e:
+            print(f"Failed to fetch ticket embed: {e}")
+        except Exception as e:
+            print(f"Unexpected error fetching ticket embed: {e}")
 
-        # If no tip found in order text AND no tip references in order text, try ticket embed
-        if tip_amount == 0.0 and not has_tip_in_order:
-            try:
-                ticket_embed = await fetch_ticket_embed(interaction.channel)
-                if ticket_embed:
-                    # Look for Tip Amount field in the ticket embed
-                    for field in ticket_embed.fields:
-                        if field.name and 'tip' in field.name.lower():
-                            # Extract numeric tip value
-                            tip_str = field.value
-                            if tip_str:
-                                # Clean the tip string - remove any non-numeric characters except decimal point
-                                tip_cleaned = re.sub(r'[^\d.]', '', tip_str)
-                                if tip_cleaned:
-                                    try:
-                                        tip_amount = float(tip_cleaned)
-                                        break  # Found a tip, stop searching
-                                    except ValueError:
-                                        pass
-            except discord.HTTPException as e:
-                print(f"Failed to fetch ticket embed: {e}")
-                # Continue with tip from order text
-            except Exception as e:
-                print(f"Unexpected error fetching ticket embed: {e}")
-                # Continue with tip from order text
+        # If no tip found in ticket embed, fall back to order text tip
+        if tip_amount == 0.0:
+            tip_amount = tip_from_order
         
         # Parse service fee override
         custom_service_fee = None
