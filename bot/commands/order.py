@@ -2054,8 +2054,12 @@ def setup(bot: commands.Bot):
                 service_fee = custom_service_fee
             else:
                 service_fee = 6.0 if vip else 7.0
-            # Final total already includes tip when parsed from order text, so don't add it again
-            new_total = final_total + service_fee
+            # If tip from ticket embed differs from tip in order text, we need to adjust
+            # final_total includes the original tip, so we subtract it and add the new tip
+            if tip_amount != tip_from_order:
+                new_total = final_total - tip_from_order + tip_amount + service_fee
+            else:
+                new_total = final_total + service_fee
             
             # Build the description with breakdown
             conf_description = f"**Order Total: ${original_total:.2f}**\n\n"
@@ -2136,8 +2140,12 @@ def setup(bot: commands.Bot):
                 service_fee = custom_service_fee
             else:
                 service_fee = 6.0 if vip else 7.0
-            # Final total already includes tip when parsed from order text, so don't add it again
-            new_total = final_total + service_fee
+            # If tip from ticket embed differs from tip in order text, we need to adjust
+            # final_total includes the original tip, so we subtract it and add the new tip
+            if tip_amount != tip_from_order:
+                new_total = final_total - tip_from_order + tip_amount + service_fee
+            else:
+                new_total = final_total + service_fee
             
             embed_description += f"Your original total + taxes + Uber fees: ${original_total:.2f}\n\n"
             embed_description += "**Promo Discount + Service Fee successfully applied!**\n\n"
@@ -2255,8 +2263,11 @@ def setup(bot: commands.Bot):
         if service_fee < 0:
             service_fee = 7.0  # Default to standard fee
         
-        # Calculate new total with service fee (final_total already includes tip)
-        new_total = final_total + service_fee
+        # Calculate new total with service fee, adjusting for tip difference
+        if tip_amount != tip_from_order:
+            new_total = final_total - tip_from_order + tip_amount + service_fee
+        else:
+            new_total = final_total + service_fee
         
         # Create the breakdown embed
         embed = discord.Embed(
