@@ -552,6 +552,10 @@ def setup(bot: commands.Bot):
             parts.append(f"override_notes:{notes}")
             if 'leave' in notes.lower():
                 parts.append("override_dropoff:Leave at Door")
+        # Add tip override if present
+        tip_amount = clean_tip_amount(info['tip'])
+        if tip_amount:
+            parts.append(f"override_tip:{tip_amount}")
 
         command = ' '.join(parts)
 
@@ -572,7 +576,6 @@ def setup(bot: commands.Bot):
         embed = discord.Embed(title="Fusion Order", color=0x0099ff)
         embed.add_field(name="", value=f"```{command}```", inline=False)
         embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
-        embed.add_field(name="Tip:", value=f"```{clean_tip_amount(info['tip'])}```", inline=False)
         pool_counts = bot.get_pool_counts()
         card_count = pool_counts['cards']
         warnings = []
@@ -1714,13 +1717,17 @@ def setup(bot: commands.Bot):
             if 'leave' in notes.lower():
                 parts.append("override_dropoff:Leave at Door")
 
+        # Add tip override if present
+        tip_amount = clean_tip_amount(info['tip'])
+        if tip_amount:
+            parts.append(f"override_tip:{tip_amount}")
+
         command = ' '.join(parts)
 
         # Create response embed
         embed = discord.Embed(title="Reorder Command", color=0xFF1493)
         embed.add_field(name="", value=f"```{command}```", inline=False)
         embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
-        embed.add_field(name="Tip:", value=f"```{clean_tip_amount(info['tip'])}```", inline=False)
         
         # Log the command
         log_command_output(
@@ -1817,6 +1824,7 @@ def setup(bot: commands.Bot):
         final_total = 0.0
         temp_total = 0.0  # For storing "Total:" value temporarily
         cart_items = []  # Store cart items
+        tip_from_order = 0.0  # Track tip parsed from order text
         
         # Detect which format and parse accordingly
         is_format_two = ':rice:' in order_text or ':cashmachine:' in order_text
@@ -1909,6 +1917,18 @@ def setup(bot: commands.Bot):
                     colon_idx = line.rfind(':')
                     if colon_idx != -1:
                         taxes_fees = parse_money(line[colon_idx + 1:])
+
+            # Parse tip from order text
+            elif 'tip:' in line_lower and 'after' not in line_lower:
+                if '╰・' in line:
+                    clean_line = line.replace('╰・', '').strip()
+                    parts = clean_line.split(':', 1)
+                    if len(parts) > 1:
+                        tip_from_order = parse_money(parts[1])
+                else:
+                    colon_idx = line.rfind(':')
+                    if colon_idx != -1:
+                        tip_from_order = parse_money(line[colon_idx + 1:])
             
             # Parse final total (format varies)
             elif 'total after tip:' in line_lower:
@@ -1963,33 +1983,34 @@ def setup(bot: commands.Bot):
         # Calculate original total
         original_total = subtotal + delivery_fee + taxes_fees + 3.49
         
-        # Parse tip amount - first check ticket embed, then use manual tip if provided
-        tip_amount = 0.0
-        
-        # Try to get tip from ticket embed first
-        try:
-            ticket_embed = await fetch_ticket_embed(interaction.channel)
-            if ticket_embed:
-                # Look for Tip Amount field in the ticket embed
-                for field in ticket_embed.fields:
-                    if field.name and 'tip' in field.name.lower():
-                        # Extract numeric tip value
-                        tip_str = field.value
-                        if tip_str:
-                            # Clean the tip string - remove any non-numeric characters except decimal point
-                            tip_cleaned = re.sub(r'[^\d.]', '', tip_str)
-                            if tip_cleaned:
-                                try:
-                                    tip_amount = float(tip_cleaned)
-                                    break  # Found a tip, stop searching
-                                except ValueError:
-                                    pass
-        except discord.HTTPException as e:
-            print(f"Failed to fetch ticket embed: {e}")
-            # Continue with manual tip if provided
-        except Exception as e:
-            print(f"Unexpected error fetching ticket embed: {e}")
-            # Continue with manual tip if provided
+        # Parse tip amount - use tip from order text first, then check ticket embed
+        tip_amount = tip_from_order  # Use tip parsed from order text as default
+
+        # If no tip found in order text, try to get from ticket embed
+        if tip_amount == 0.0:
+            try:
+                ticket_embed = await fetch_ticket_embed(interaction.channel)
+                if ticket_embed:
+                    # Look for Tip Amount field in the ticket embed
+                    for field in ticket_embed.fields:
+                        if field.name and 'tip' in field.name.lower():
+                            # Extract numeric tip value
+                            tip_str = field.value
+                            if tip_str:
+                                # Clean the tip string - remove any non-numeric characters except decimal point
+                                tip_cleaned = re.sub(r'[^\d.]', '', tip_str)
+                                if tip_cleaned:
+                                    try:
+                                        tip_amount = float(tip_cleaned)
+                                        break  # Found a tip, stop searching
+                                    except ValueError:
+                                        pass
+            except discord.HTTPException as e:
+                print(f"Failed to fetch ticket embed: {e}")
+                # Continue with tip from order text
+            except Exception as e:
+                print(f"Unexpected error fetching ticket embed: {e}")
+                # Continue with tip from order text
         
         # Parse service fee override
         custom_service_fee = None
@@ -2031,7 +2052,8 @@ def setup(bot: commands.Bot):
                 service_fee = custom_service_fee
             else:
                 service_fee = 6.0 if vip else 7.0
-            new_total = final_total + tip_amount + service_fee
+            # Final total already includes tip when parsed from order text, so don't add it again
+            new_total = final_total + service_fee
             
             # Build the description with breakdown
             conf_description = f"**Order Total: ${original_total:.2f}**\n\n"
@@ -2112,7 +2134,8 @@ def setup(bot: commands.Bot):
                 service_fee = custom_service_fee
             else:
                 service_fee = 6.0 if vip else 7.0
-            new_total = final_total + tip_amount + service_fee
+            # Final total already includes tip when parsed from order text, so don't add it again
+            new_total = final_total + service_fee
             
             embed_description += f"Your original total + taxes + Uber fees: ${original_total:.2f}\n\n"
             embed_description += "**Promo Discount + Service Fee successfully applied!**\n\n"
@@ -2230,8 +2253,8 @@ def setup(bot: commands.Bot):
         if service_fee < 0:
             service_fee = 7.0  # Default to standard fee
         
-        # Calculate new total with tip and service fee
-        new_total = final_total + tip_amount + service_fee
+        # Calculate new total with service fee (final_total already includes tip)
+        new_total = final_total + service_fee
         
         # Create the breakdown embed
         embed = discord.Embed(
