@@ -1983,64 +1983,57 @@ def setup(bot: commands.Bot):
         # Calculate original total
         original_total = subtotal + delivery_fee + taxes_fees + 3.49
         
-        # Parse tip amount - prioritize ticket embed over order text
-        # The ticket embed contains the current tip for this order, while order text shows historical tip
+        # Parse tip amount - check ticket embed first, fall back to order text
         tip_amount = 0.0
+        tip_found_in_embed = False
 
         # First try to get tip from ticket embed
         try:
             ticket_embed = await fetch_ticket_embed(interaction.channel)
             if ticket_embed:
-                # Debug: print all fields to understand what's being parsed
-                for field in ticket_embed.fields:
-                    if field.name:
-                        print(f"Field: '{field.name}' = '{field.value}'")
-
                 # Look for Tip Amount field in the ticket embed
                 for field in ticket_embed.fields:
                     if field.name and field.name.lower().strip() == 'tip amount':
                         # Extract numeric tip value
                         tip_str = field.value
-                        print(f"Found tip field with value: '{tip_str}'")
-
                         if tip_str and tip_str.strip():
                             # Check if it's N/A or empty
                             if tip_str.strip().upper() in ['N/A', 'NA', 'NONE', '-', '']:
                                 tip_amount = 0.0
-                                break
-
-                            # Handle various tip formats: "1", "$1", "1.00", "$1.00"
-                            # But NOT things like "Total: $11.23"
-                            tip_cleaned = tip_str.strip()
-
-                            # Skip if it contains words other than just the number
-                            if any(word in tip_cleaned.lower() for word in ['total', 'subtotal', 'tax', 'fee']):
-                                print(f"Skipping tip field as it contains other text: {tip_cleaned}")
+                                tip_found_in_embed = True
                                 break
 
                             # Remove currency symbols and commas
-                            tip_cleaned = tip_cleaned.replace('$', '').replace(',', '').strip()
+                            tip_cleaned = tip_str.strip().replace('$', '').replace(',', '').strip()
 
                             try:
                                 parsed_tip = float(tip_cleaned)
-                                # Sanity check - tips shouldn't be huge
-                                if 0 <= parsed_tip <= 100:
+                                # Sanity checks to avoid using wrong values
+                                # Don't use if it matches the final total (common bug)
+                                # Don't use if it's unreasonably large
+                                if 0 <= parsed_tip <= 20 and parsed_tip != final_total:
                                     tip_amount = parsed_tip
-                                    print(f"Parsed tip amount: {tip_amount}")
+                                    tip_found_in_embed = True
+                                elif parsed_tip == final_total:
+                                    # This is likely a bug where tip field contains total
+                                    # Fall back to order text
+                                    tip_found_in_embed = False
                                 else:
-                                    print(f"Tip amount {parsed_tip} is outside reasonable range")
-                                break  # Found a tip, stop searching
+                                    # Unreasonable tip, mark as found but use 0
+                                    tip_amount = 0.0
+                                    tip_found_in_embed = True
+                                break
                             except ValueError:
-                                print(f"Could not parse tip value: {tip_cleaned}")
-                                # If it's not a valid number, skip
-                                pass
+                                # Not a valid number, treat as not found
+                                tip_found_in_embed = False
+                                break
         except discord.HTTPException as e:
             print(f"Failed to fetch ticket embed: {e}")
         except Exception as e:
             print(f"Unexpected error fetching ticket embed: {e}")
 
-        # If no tip found in ticket embed, fall back to order text tip
-        if tip_amount == 0.0:
+        # If no valid tip found in embed, use tip from order text
+        if not tip_found_in_embed:
             tip_amount = tip_from_order
         
         # Parse service fee override
