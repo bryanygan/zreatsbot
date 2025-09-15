@@ -1991,21 +1991,47 @@ def setup(bot: commands.Bot):
         try:
             ticket_embed = await fetch_ticket_embed(interaction.channel)
             if ticket_embed:
+                # Debug: print all fields to understand what's being parsed
+                for field in ticket_embed.fields:
+                    if field.name:
+                        print(f"Field: '{field.name}' = '{field.value}'")
+
                 # Look for Tip Amount field in the ticket embed
                 for field in ticket_embed.fields:
                     if field.name and field.name.lower().strip() == 'tip amount':
                         # Extract numeric tip value
                         tip_str = field.value
+                        print(f"Found tip field with value: '{tip_str}'")
+
                         if tip_str and tip_str.strip():
+                            # Check if it's N/A or empty
+                            if tip_str.strip().upper() in ['N/A', 'NA', 'NONE', '-', '']:
+                                tip_amount = 0.0
+                                break
+
                             # Handle various tip formats: "1", "$1", "1.00", "$1.00"
-                            tip_cleaned = tip_str.strip().replace('$', '').replace(',', '')
+                            # But NOT things like "Total: $11.23"
+                            tip_cleaned = tip_str.strip()
+
+                            # Skip if it contains words other than just the number
+                            if any(word in tip_cleaned.lower() for word in ['total', 'subtotal', 'tax', 'fee']):
+                                print(f"Skipping tip field as it contains other text: {tip_cleaned}")
+                                break
+
+                            # Remove currency symbols and commas
+                            tip_cleaned = tip_cleaned.replace('$', '').replace(',', '').strip()
+
                             try:
                                 parsed_tip = float(tip_cleaned)
                                 # Sanity check - tips shouldn't be huge
                                 if 0 <= parsed_tip <= 100:
                                     tip_amount = parsed_tip
+                                    print(f"Parsed tip amount: {tip_amount}")
+                                else:
+                                    print(f"Tip amount {parsed_tip} is outside reasonable range")
                                 break  # Found a tip, stop searching
                             except ValueError:
+                                print(f"Could not parse tip value: {tip_cleaned}")
                                 # If it's not a valid number, skip
                                 pass
         except discord.HTTPException as e:
