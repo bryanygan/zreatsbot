@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import discord
 from typing import Optional
 from datetime import datetime
