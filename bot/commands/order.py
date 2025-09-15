@@ -1993,18 +1993,21 @@ def setup(bot: commands.Bot):
             if ticket_embed:
                 # Look for Tip Amount field in the ticket embed
                 for field in ticket_embed.fields:
-                    if field.name and 'tip' in field.name.lower():
+                    if field.name and field.name.lower().strip() == 'tip amount':
                         # Extract numeric tip value
                         tip_str = field.value
-                        if tip_str:
-                            # Clean the tip string - remove any non-numeric characters except decimal point
-                            tip_cleaned = re.sub(r'[^\d.]', '', tip_str)
-                            if tip_cleaned:
-                                try:
-                                    tip_amount = float(tip_cleaned)
-                                    break  # Found a tip, stop searching
-                                except ValueError:
-                                    pass
+                        if tip_str and tip_str.strip():
+                            # Handle various tip formats: "1", "$1", "1.00", "$1.00"
+                            tip_cleaned = tip_str.strip().replace('$', '').replace(',', '')
+                            try:
+                                parsed_tip = float(tip_cleaned)
+                                # Sanity check - tips shouldn't be huge
+                                if 0 <= parsed_tip <= 100:
+                                    tip_amount = parsed_tip
+                                break  # Found a tip, stop searching
+                            except ValueError:
+                                # If it's not a valid number, skip
+                                pass
         except discord.HTTPException as e:
             print(f"Failed to fetch ticket embed: {e}")
         except Exception as e:
