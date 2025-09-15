@@ -1919,7 +1919,7 @@ def setup(bot: commands.Bot):
                         taxes_fees = parse_money(line[colon_idx + 1:])
 
             # Parse tip from order text
-            elif 'tip:' in line_lower and 'after' not in line_lower:
+            elif ('tip:' in line_lower or 'tipping amount:' in line_lower) and 'after' not in line_lower:
                 if '╰・' in line:
                     clean_line = line.replace('╰・', '').strip()
                     parts = clean_line.split(':', 1)
@@ -1986,8 +1986,12 @@ def setup(bot: commands.Bot):
         # Parse tip amount - use tip from order text first, then check ticket embed
         tip_amount = tip_from_order  # Use tip parsed from order text as default
 
-        # If no tip found in order text, try to get from ticket embed
-        if tip_amount == 0.0:
+        # Only try ticket embed if we didn't find any tip info in order text at all
+        # Check if order text has tip/tipping references first
+        has_tip_in_order = 'tip:' in order_text.lower() or 'tipping amount:' in order_text.lower()
+
+        # If no tip found in order text AND no tip references in order text, try ticket embed
+        if tip_amount == 0.0 and not has_tip_in_order:
             try:
                 ticket_embed = await fetch_ticket_embed(interaction.channel)
                 if ticket_embed:
