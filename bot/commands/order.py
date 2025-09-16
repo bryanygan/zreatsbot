@@ -1818,7 +1818,14 @@ def setup(bot: commands.Bot):
         ]
         
         for pattern in patterns_to_split:
-            text_parts = text_parts.replace(' ' + pattern, '\n' + pattern)
+            if pattern == 'Total After Tip:':
+                # Debug this specific replacement
+                if pattern in text_parts:
+                    print(f"DEBUG: Found '{pattern}' in text")
+                    text_parts = text_parts.replace(pattern, '\n' + pattern)
+                    print(f"DEBUG: After replacing '{pattern}', relevant section: ...{text_parts[max(0, text_parts.find('Total After')-20):text_parts.find('Total After')+50]}...")
+            else:
+                text_parts = text_parts.replace(' ' + pattern, '\n' + pattern)
             # Don't add ╰・ prefix here since we already handled it above
         
         lines = text_parts.split('\n')
@@ -1929,10 +1936,11 @@ def setup(bot: commands.Bot):
                         taxes_fees = parse_money(line[colon_idx + 1:])
 
             # Parse tip from order text
-            elif (('tip:' in line_lower or 'tipping amount:' in line_lower) and
-                  'after tip' not in line_lower and
-                  'total after' not in line_lower and
-                  not line_lower.startswith('total')):
+            # Check if this is actually a tip line and not part of "Total After Tip:"
+            elif (('tipping amount:' in line_lower) or
+                  ((line_lower.startswith('tip:') or line_lower.startswith('╰・tip:')) and
+                   'after' not in line_lower and
+                   'total' not in line_lower)):
                 if '╰・' in line:
                     clean_line = line.replace('╰・', '').strip()
                     parts = clean_line.split(':', 1)
