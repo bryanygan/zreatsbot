@@ -1925,10 +1925,12 @@ def setup(bot: commands.Bot):
                     parts = clean_line.split(':', 1)
                     if len(parts) > 1:
                         tip_from_order = parse_money(parts[1])
+                        print(f"DEBUG: Parsed tip from order (╰・): {tip_from_order} from line: {line}")
                 else:
                     colon_idx = line.rfind(':')
                     if colon_idx != -1:
                         tip_from_order = parse_money(line[colon_idx + 1:])
+                        print(f"DEBUG: Parsed tip from order: {tip_from_order} from line: {line}")
             
             # Parse final total (format varies)
             elif 'total after tip:' in line_lower:
@@ -1992,7 +1994,9 @@ def setup(bot: commands.Bot):
             ticket_embed = await fetch_ticket_embed(interaction.channel)
             if ticket_embed:
                 # Look for Tip Amount field in the ticket embed
+                print(f"DEBUG: Checking ticket embed fields...")
                 for field in ticket_embed.fields:
+                    print(f"DEBUG: Field name='{field.name}', value='{field.value}'")
                     if field.name and field.name.lower().strip() == 'tip amount':
                         # Extract numeric tip value
                         tip_str = field.value
@@ -2035,6 +2039,9 @@ def setup(bot: commands.Bot):
         # If no valid tip found in embed, use tip from order text
         if not tip_found_in_embed:
             tip_amount = tip_from_order
+
+        # Debug logging
+        print(f"DEBUG: tip_from_order={tip_from_order}, final_total={final_total}, tip_found_in_embed={tip_found_in_embed}, tip_amount={tip_amount}")
         
         # Parse service fee override
         custom_service_fee = None
