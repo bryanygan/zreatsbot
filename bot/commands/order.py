@@ -1805,10 +1805,16 @@ def setup(bot: commands.Bot):
         text_parts = order_text.replace('FARE BREAKDOWN:', '\nFARE BREAKDOWN:').replace('CART ITEMS:', '\nCART ITEMS:')
         
         # Common patterns that should be on new lines
+        # Order matters! Process longer patterns first to avoid partial matches
         patterns_to_split = [
-            'Subtotal:', 'Promotion:', 'Delivery Fee:', 'Taxes & Other Fees:',
-            'Taxes and Other Fees:', 'Total:', 'Tipping Amount:', 'Total After Tip:',
-            'Final Total:', 'Uber Cash:', 'Tip:', 'Order Total:'
+            'Total After Tip:',  # Must come before 'Tip:'
+            'Taxes & Other Fees:', 'Taxes and Other Fees:',
+            'Tipping Amount:',
+            'Final Total:', 'Order Total:',
+            'Subtotal:', 'Promotion:', 'Delivery Fee:',
+            'Uber Cash:',
+            'Total:',  # After 'Total After Tip:' and 'Final Total:'
+            'Tip:'  # Last, after 'Total After Tip:' and 'Tipping Amount:'
         ]
         
         for pattern in patterns_to_split:
