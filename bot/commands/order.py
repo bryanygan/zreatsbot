@@ -1814,7 +1814,8 @@ def setup(bot: commands.Bot):
             'Subtotal:', 'Promotion:', 'Delivery Fee:',
             'Uber Cash:',
             'Total:',  # After 'Total After Tip:' and 'Final Total:'
-            'Tip:'  # Last, after 'Total After Tip:' and 'Tipping Amount:'
+            '╰・Tip:',  # Only split when Tip has the ╰・ prefix
+            # Don't split standalone 'Tip:' as it causes issues with 'Total After Tip:'
         ]
         
         for pattern in patterns_to_split:
