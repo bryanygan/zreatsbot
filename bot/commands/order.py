@@ -1834,8 +1834,12 @@ def setup(bot: commands.Bot):
             line = line.strip()
             if not line:
                 continue
-                
+
             line_lower = line.lower()
+
+            # Debug specific lines
+            if 'tipping' in line_lower or ('tip' in line_lower and 'after' not in line_lower):
+                print(f"DEBUG: Processing line with tip: '{line}'")
             
             # Check for cart items section
             if 'cart items:' in line_lower or 'items in bag:' in line_lower:
@@ -1919,7 +1923,10 @@ def setup(bot: commands.Bot):
                         taxes_fees = parse_money(line[colon_idx + 1:])
 
             # Parse tip from order text
-            elif ('tip:' in line_lower or 'tipping amount:' in line_lower) and 'after tip' not in line_lower and 'total' not in line_lower:
+            elif (('tip:' in line_lower or 'tipping amount:' in line_lower) and
+                  'after tip' not in line_lower and
+                  'total after' not in line_lower and
+                  not line_lower.startswith('total')):
                 if '╰・' in line:
                     clean_line = line.replace('╰・', '').strip()
                     parts = clean_line.split(':', 1)
@@ -2035,6 +2042,9 @@ def setup(bot: commands.Bot):
         # If no valid tip found in embed, use tip from order text
         if not tip_found_in_embed:
             tip_amount = tip_from_order
+
+        # Debug what's happening
+        print(f"DEBUG: tip_from_order={tip_from_order}, tip_found_in_embed={tip_found_in_embed}, tip_amount={tip_amount}, final_total={final_total}")
         
         # Parse service fee override
         custom_service_fee = None
