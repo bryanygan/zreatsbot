@@ -17,6 +17,8 @@ A unified Discord bot that combines multiple essential functionalities:
 - **`/pump_order`** - Generate Pump order commands with dedicated pump email pools
 - **`/reorder`** - Generate reorder commands with email only (Fusion/Stewardess, no card required)
 - **`/finished`** - Mark order as finished and move ticket to completed channel
+- **`/z`** - Parse order information and display detailed breakdown with payment calculations
+- **`/vcc`** - Pull a card from the pool and display in order format (quick card access)
 - **Automatic embed parsing** from ticket bots
 - **Order webhook tracking** - Use `/send_tracking` after a webhook posts to send tracking info to the ticket
 - **Card & Email pools** with SQLite storage
@@ -24,6 +26,8 @@ A unified Discord bot that combines multiple essential functionalities:
 - **Comprehensive logging** to JSON, CSV, and TXT files
 - **Custom card/email support** - Use your own cards/emails without touching the pool
 - **Intelligent webhook caching** - Automatically detects and caches order confirmations from multiple webhook formats
+- **VIP pricing support** - Special pricing options for VIP customers
+- **Service fee override** - Customize service fees per order
 
 ### Advanced Webhook Detection
 - **Automatic webhook processing** - Detects tracking and checkout webhooks in real-time
@@ -169,6 +173,8 @@ pytest
 - `/wool_order custom_email:test@example.com custom_card_number:1234... custom_card_cvv:123` - Generate wool command
 - `/pump_order custom_email:test@example.com custom_card_number:1234... custom_card_cvv:123 pool:pump_20off25` - Generate pump order with pump pool email
 - `/reorder custom_email:test@example.com` - Generate reorder command (email only)
+- `/z order_text:"paste order here" vip:true service_fee:6.00` - Parse order text and show breakdown with custom fees
+- `/vcc` - Quick pull a card from pool in order format
 - `/finished` - Mark order as finished and move ticket to completed channel
 - `/send_tracking` - Send tracking info for current ticket using cached webhook data
 
@@ -212,6 +218,7 @@ pytest
 - `/toggle_payment method:zelle enabled:false` - Enable/disable payment method buttons
 - `/toggle_cashapp enabled:false` - Legacy toggle for CashApp button
 - `/wool_details` - Show parsed Wool order details
+- `/z order_text:"paste order here" vip:true service_fee:6.00` - Parse order and calculate payment breakdown
 
 ## File Structure
 
@@ -231,7 +238,8 @@ combined-discord-bot/
 │   │   ├── __init__.py
 │   │   ├── admin.py        # Pool management commands
 │   │   ├── channel.py      # Channel management commands
-│   │   └── order.py        # Order generation commands
+│   │   ├── order.py        # Order generation commands
+│   │   └── vcc.py          # VCC card pull command
 │   └── utils/              # Utility modules
 │       ├── __init__.py
 │       ├── card_validator.py    # Credit card validation
@@ -294,6 +302,26 @@ All order commands now support custom cards and emails that bypass the pool:
 # Use pool resources (consumes from pool)
 /fusion_order
 ```
+
+### Z Command (Order Parser)
+The `/z` command parses order text and provides a detailed breakdown:
+
+```bash
+# Basic usage
+/z order_text:"paste your order text here"
+
+# With VIP pricing ($6 service fee instead of $7)
+/z order_text:"order text" vip:true
+
+# With custom service fee
+/z order_text:"order text" service_fee:5.50
+```
+
+This command will:
+- Parse all order details (items, quantities, prices)
+- Calculate subtotals, taxes, fees, and tips
+- Show payment breakdown with all payment methods
+- Support VIP pricing and custom service fees
 
 ## Webhook Detection & Caching
 
@@ -399,10 +427,20 @@ For tracking issues:
 - Multiple email pools allow for separation of different order types
 - Payment methods can be dynamically enabled/disabled without code changes
 
+## Recent Updates
+
+### New Features Added
+- **VCC Command** - Quick card pull from pool in order format for fast access
+- **Z Command** - Advanced order parser with payment breakdown calculations
+- **Tip Override** - Enhanced tip parsing logic with support for various formats
+- **Service Fee Customization** - VIP pricing and custom service fee overrides
+- **Improved Tip Detection** - Better handling of tip amounts from ticket embeds and order text
+- **Enhanced Order Parsing** - More accurate pattern matching for order text processing
+
 ## Advanced Usage
 
 ### Custom Card Expiration
-Update the constants in the source files (combinedbot.py and bot/commands/order.py):
+Update the constants in the source files (combinedbot.py, bot/commands/order.py, and bot/commands/vcc.py):
 ```python
 EXP_MONTH = '12'  # December
 EXP_YEAR = '25'   # 2025
