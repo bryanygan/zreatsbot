@@ -33,17 +33,20 @@ ZIP_CODE = '07724'
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db')
 
 def clean_tip_amount(tip_str):
-    """Extract numeric tip value, removing dollar signs and validating format"""
+    """Extract numeric tip value, removing all non-numeric characters except decimal point"""
     if not tip_str:
         return ""
-    # Remove dollar signs and whitespace
-    cleaned = tip_str.strip().replace('$', '')
-    # Validate it's a proper number (including decimals)
-    try:
-        float(cleaned)  # Validate it's a number
-        return cleaned
-    except ValueError:
-        return tip_str  # Return original if not a valid number
+    # Extract only numbers and decimal point using regex
+    matches = re.findall(r'[\d.]+', tip_str)
+    if matches:
+        # Join all numeric parts and validate it's a proper number
+        cleaned = ''.join(matches)
+        try:
+            float(cleaned)  # Validate it's a number
+            return cleaned
+        except ValueError:
+            return ""  # Return empty string if not a valid number
+    return ""  # Return empty string if no numbers found
 
 
 def setup(bot: commands.Bot):
@@ -2195,7 +2198,10 @@ def setup(bot: commands.Bot):
                 new_total = final_total + service_fee
             
             embed_description += f"Your original total + taxes + Uber fees: ${original_total:.2f}\n\n"
-            embed_description += "**Promo Discount + Service Fee successfully applied!**\n\n"
+            embed_description += "**Promo Discount + Service Fee successfully applied!**\n"
+            if vip:
+                embed_description += "**VIP discount applied!**\n"
+            embed_description += "\n"
             embed_description += f"Tip amount: ${tip_amount:.2f}\n\n"
             embed_description += f"Your new total: **${new_total:.2f}**"
             
@@ -2338,7 +2344,10 @@ def setup(bot: commands.Bot):
             description += "\n"
         
         description += f"Your original total + taxes + Uber fees: ${original_total:.2f}\n\n"
-        description += "**Promo Discount + Service Fee successfully applied!**\n\n"
+        description += "**Promo Discount + Service Fee successfully applied!**\n"
+        if vip:
+            description += "**VIP discount applied!**\n"
+        description += "\n"
         description += f"Tip amount: ${tip_amount:.2f}\n\n"
         description += f"Your new total: **${new_total:.2f}**"
         
