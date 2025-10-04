@@ -4,7 +4,7 @@ from discord.ext import commands
 from ..utils.helpers import owner_only
 import db
 
-EXP_MONTH = '09'
+EXP_MONTH = '10'
 EXP_YEAR = '30'
 ZIP_CODE = '07724'
 
