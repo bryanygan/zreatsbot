@@ -37,16 +37,32 @@ def setup(bot: commands.Bot):
     @bot.tree.command(name='break', description='Put the channel on hold')
     async def break_command(interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
-        
+
         if OPENER_CHANNEL_ID and interaction.channel.id != OPENER_CHANNEL_ID:
             return await interaction.followup.send(
                 "❌ This command can only be used in the opener channel.", ephemeral=True
             )
-        
+
         success, error = await change_channel_status(interaction.channel, "break")
-        
+
         if success:
             await interaction.followup.send("✅ Channel put on hold.", ephemeral=True)
+        else:
+            await interaction.followup.send(f"❌ {error}", ephemeral=True)
+
+    @bot.tree.command(name='semi-open', description='Set the channel to semi-open status')
+    async def semi_open_command(interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+
+        if OPENER_CHANNEL_ID and interaction.channel.id != OPENER_CHANNEL_ID:
+            return await interaction.followup.send(
+                "❌ This command can only be used in the opener channel.", ephemeral=True
+            )
+
+        success, error = await change_channel_status(interaction.channel, "semi-open")
+
+        if success:
+            await interaction.followup.send("✅ Channel set to semi-open.", ephemeral=True)
         else:
             await interaction.followup.send(f"❌ {error}", ephemeral=True)
 

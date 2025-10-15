@@ -18,6 +18,8 @@ async def change_channel_status(channel: discord.TextChannel, status: str, silen
         new_name = "open🟢🟢"
     elif status == "break":
         new_name = "on-hold🟡🟡"
+    elif status == "semi-open":
+        new_name = "semi-open🟡🟡"
     else:  # close
         new_name = "closed🔴🔴"
 
@@ -69,6 +71,24 @@ async def change_channel_status(channel: discord.TextChannel, status: str, silen
             embed.set_footer(text="Do not open a ticket during this time, you will not get a response.")
             await channel.send(embed=embed)
             
+            # Send same message to mirror channel
+            if mirror_channel:
+                try:
+                    mirror_message = await mirror_channel.send(embed=embed)
+                    status_message_id = mirror_message.id
+                except:
+                    pass
+        elif status == "semi-open":
+            embed = discord.Embed(
+                title="ZR Eats is now (semi) open.",
+                description=(
+                    "We are (semi) open. This means that our chefs will periodically check tickets from time to time. "
+                    "Please be patient when waiting for a price quote, and expect some wait time. "
+                    "Do NOT constantly ping our chefs, that will not make the process any faster."
+                ),
+            )
+            await channel.send(embed=embed)
+
             # Send same message to mirror channel
             if mirror_channel:
                 try:
