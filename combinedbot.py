@@ -128,9 +128,9 @@ class CombinedBot(commands.Bot):
         card_count = pool_counts['cards']
         return number, cvv, card_count == 0
 
-    def get_and_remove_email(self, pool_type: str = 'main') -> Optional[str]:
+    def get_and_remove_email(self, pool_type: str = 'main', fallback_to_main: bool = False) -> Optional[str]:
         """Get and remove email from specified pool"""
-        result = db_get_and_remove_email(pool_type)
+        result = db_get_and_remove_email(pool_type, fallback_to_main=fallback_to_main)
         return result
 
     def get_pool_counts(self) -> dict:
