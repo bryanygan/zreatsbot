@@ -132,6 +132,7 @@ def setup(bot: commands.Bot):
             )
 
         embed = discord.Embed(title="Fusion Assist", color=0x00ff00)
+        # Only show the command in the code block, no pool/source text
         embed.add_field(name="", value=f"```{command}```", inline=False)
         if email:
             embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
