@@ -3,6 +3,7 @@ import sqlite3
 import tempfile
 import csv
 import io
+import re
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -51,13 +52,13 @@ def setup(bot: commands.Bot):
     @bot.tree.command(name='add_email', description='(Admin) Add an email to the specified pool')
     @app_commands.describe(
         email="Email address to add to the pool",
-        pool="Email pool to add to (main, pump_20off25, pump_25off)",
+        pool="Email pool to add to (main, fusion, wool)",
         top="Add this email to the top of the pool so it's used first"
     )
     @app_commands.choices(pool=[
         app_commands.Choice(name='Main Pool', value='main'),
-        app_commands.Choice(name='Pump 20off25', value='pump_20off25'),
-        app_commands.Choice(name='Pump 25off', value='pump_25off'),
+        app_commands.Choice(name='Fusion Pool', value='fusion'),
+        app_commands.Choice(name='Wool Pool', value='wool'),
     ])
     async def add_email(interaction: discord.Interaction, email: str, pool: app_commands.Choice[str] = None, top: bool = False):
         if not owner_only(interaction):
@@ -119,8 +120,8 @@ def setup(bot: commands.Bot):
     @app_commands.describe(pool="Email pool to read from (leave blank to see all pools)")
     @app_commands.choices(pool=[
         app_commands.Choice(name='Main Pool', value='main'),
-        app_commands.Choice(name='Pump 20off25', value='pump_20off25'),
-        app_commands.Choice(name='Pump 25off', value='pump_25off'),
+        app_commands.Choice(name='Fusion Pool', value='fusion'),
+        app_commands.Choice(name='Wool Pool', value='wool'),
     ])
     async def read_emails(interaction: discord.Interaction, pool: app_commands.Choice[str] = None):
         if not owner_only(interaction):
@@ -414,22 +415,108 @@ def setup(bot: commands.Bot):
     async def bulk_emails_main(interaction: discord.Interaction, file: discord.Attachment):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
-        
+
         await _process_bulk_emails(interaction, file, 'main')
 
-    @bot.tree.command(name='bulk_emails_pump20', description='(Admin) Add multiple emails to pump_20off25 pool from text file')
-    async def bulk_emails_pump20(interaction: discord.Interaction, file: discord.Attachment):
+    @bot.tree.command(name='bulk_emails_fusion', description='(Admin) Add multiple emails to fusion pool from text file')
+    async def bulk_emails_fusion(interaction: discord.Interaction, file: discord.Attachment):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
-        
-        await _process_bulk_emails(interaction, file, 'pump_20off25')
 
-    @bot.tree.command(name='bulk_emails_pump25', description='(Admin) Add multiple emails to pump_25off pool from text file')
-    async def bulk_emails_pump25(interaction: discord.Interaction, file: discord.Attachment):
+        await _process_bulk_emails(interaction, file, 'fusion')
+
+    @bot.tree.command(name='bulk_emails_wool', description='(Admin) Add multiple emails to wool pool from text file')
+    async def bulk_emails_wool(interaction: discord.Interaction, file: discord.Attachment):
         if not owner_only(interaction):
             return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
-        
-        await _process_bulk_emails(interaction, file, 'pump_25off')
+
+        await _process_bulk_emails(interaction, file, 'wool')
+
+    @bot.tree.command(name='bulk_emails_text', description='(Admin) Add multiple emails from text input (space or comma separated)')
+    @app_commands.describe(
+        emails="Email addresses separated by spaces, commas, or both",
+        pool="Email pool to add to"
+    )
+    @app_commands.choices(pool=[
+        app_commands.Choice(name='Main Pool', value='main'),
+        app_commands.Choice(name='Fusion Pool', value='fusion'),
+        app_commands.Choice(name='Wool Pool', value='wool'),
+    ])
+    async def bulk_emails_text(interaction: discord.Interaction, emails: str, pool: app_commands.Choice[str]):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
+
+        # DEFER THE RESPONSE IMMEDIATELY to prevent timeout
+        await interaction.response.defer(ephemeral=True)
+
+        pool_type = pool.value
+
+        try:
+            # Extract all email addresses from the string using regex
+            # This pattern matches standard email format: localpart@domain.tld
+            email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
+            found_emails = re.findall(email_pattern, emails)
+
+            if not found_emails:
+                return await interaction.followup.send("❌ No valid email addresses found in the input.", ephemeral=True)
+
+            # Remove duplicates while preserving order
+            unique_emails = []
+            seen = set()
+            for email in found_emails:
+                email_lower = email.lower()
+                if email_lower not in seen:
+                    seen.add(email_lower)
+                    unique_emails.append(email)
+
+            # Process each email
+            added_count = 0
+            duplicate_count = 0
+            invalid_emails = []
+
+            for email in unique_emails:
+                # Basic validation
+                if '@' not in email or len(email) < 5:
+                    invalid_emails.append(email)
+                    continue
+
+                parts = email.split('@')
+                if len(parts) != 2 or not parts[0] or not parts[1] or '.' not in parts[1]:
+                    invalid_emails.append(email)
+                    continue
+
+                # Try to add to pool
+                try:
+                    success = db.add_email_to_pool(email, pool_type, top=False)
+                    if success:
+                        added_count += 1
+                    else:
+                        duplicate_count += 1
+                except ValueError as e:
+                    invalid_emails.append(f"{email} ({str(e)})")
+
+            # Build response message
+            response_parts = []
+            if added_count > 0:
+                response_parts.append(f"✅ Added {added_count} email(s) to **{pool_type}** pool")
+            if duplicate_count > 0:
+                response_parts.append(f"⚠️ {duplicate_count} email(s) already existed in pool")
+            if invalid_emails:
+                error_list = ", ".join(invalid_emails[:5])
+                if len(invalid_emails) > 5:
+                    error_list += f", ... and {len(invalid_emails) - 5} more"
+                response_parts.append(f"❌ {len(invalid_emails)} invalid email(s): {error_list}")
+
+            # Get final pool count
+            pool_counts = db.get_pool_counts()
+            final_count = pool_counts['emails'][pool_type]
+            response_parts.append(f"\n**{pool_type}** pool now has {final_count} email(s)")
+
+            response = "\n".join(response_parts)
+            await interaction.followup.send(response, ephemeral=True)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error processing emails: {str(e)}", ephemeral=True)
 
     @bot.tree.command(name='remove_card', description='(Admin) Remove a card from the pool')
     async def remove_card(interaction: discord.Interaction, number: str, cvv: str):
@@ -455,8 +542,8 @@ def setup(bot: commands.Bot):
     )
     @app_commands.choices(pool=[
         app_commands.Choice(name='Main Pool', value='main'),
-        app_commands.Choice(name='Pump 20off25', value='pump_20off25'),
-        app_commands.Choice(name='Pump 25off', value='pump_25off'),
+        app_commands.Choice(name='Fusion Pool', value='fusion'),
+        app_commands.Choice(name='Wool Pool', value='wool'),
     ])
     async def remove_email(interaction: discord.Interaction, email: str, pool: app_commands.Choice[str] = None):
         if not owner_only(interaction):
@@ -585,8 +672,8 @@ def setup(bot: commands.Bot):
     @app_commands.choices(pool=[
         app_commands.Choice(name='All Pools', value='all'),
         app_commands.Choice(name='Main Pool', value='main'),
-        app_commands.Choice(name='Pump 20off25', value='pump_20off25'),
-        app_commands.Choice(name='Pump 25off', value='pump_25off'),
+        app_commands.Choice(name='Fusion Pool', value='fusion'),
+        app_commands.Choice(name='Wool Pool', value='wool'),
     ])
     async def remove_bulk_emails(interaction: discord.Interaction, file: discord.Attachment, 
                                  pool: app_commands.Choice[str] = None):

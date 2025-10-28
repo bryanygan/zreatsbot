@@ -12,7 +12,7 @@ _POOL_SIZE = 3
 _POOL: SimpleQueue[sqlite3.Connection] = SimpleQueue()
 
 # Email pool types
-VALID_EMAIL_POOLS = ['main', 'pump_20off25', 'pump_25off']
+VALID_EMAIL_POOLS = ['main', 'fusion', 'wool']
 DEFAULT_EMAIL_POOL = 'main'
 
 def init_db():
@@ -113,24 +113,32 @@ def close_connection():
             conn.close()
 
 
-def get_and_remove_email(pool_type: str = DEFAULT_EMAIL_POOL):
+def get_and_remove_email(pool_type: str = DEFAULT_EMAIL_POOL, fallback_to_main: bool = False):
     """
     Fetch the oldest email from the specified pool and remove it from the database.
-    
+    If the pool is empty and fallback_to_main is True, will try the main pool.
+
     Args:
-        pool_type: The email pool to use ('main', 'pump_20off25', 'pump_25off')
-    
+        pool_type: The email pool to use ('main', 'fusion', 'wool')
+        fallback_to_main: If True and pool is empty, try main pool (default: False)
+
     Returns:
         str: email address if available, or None if no emails left in the specified pool.
     """
     if pool_type not in VALID_EMAIL_POOLS:
         raise ValueError(f"Invalid pool type: {pool_type}. Valid pools: {VALID_EMAIL_POOLS}")
-    
+
     conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute('SELECT id, email FROM emails WHERE pool_type = ? ORDER BY id LIMIT 1', (pool_type,))
     row = cursor.fetchone()
+
+    # If no email found and fallback is enabled, try main pool
+    if not row and fallback_to_main and pool_type != 'main':
+        cursor.execute('SELECT id, email FROM emails WHERE pool_type = ? ORDER BY id LIMIT 1', ('main',))
+        row = cursor.fetchone()
+
     if not row:
         return None
 
@@ -143,12 +151,12 @@ def get_and_remove_email(pool_type: str = DEFAULT_EMAIL_POOL):
 def add_email_to_pool(email: str, pool_type: str = DEFAULT_EMAIL_POOL, top: bool = False):
     """
     Add an email to the specified pool.
-    
+
     Args:
         email: Email address to add
-        pool_type: Pool to add email to ('main', 'pump_20off25', 'pump_25off')
+        pool_type: Pool to add email to ('main', 'fusion', 'wool')
         top: If True, add to the top of the pool (lower ID)
-    
+
     Returns:
         bool: True if successful, False if email already exists in pool
     """
@@ -226,9 +234,9 @@ def get_emails_in_pool(pool_type: str = DEFAULT_EMAIL_POOL):
 def get_pool_counts() -> dict:
     """
     Return the current counts of cards and emails by pool.
-    
+
     Returns:
-        dict: {'cards': int, 'emails': {'main': int, 'pump_20off25': int, 'pump_25off': int}}
+        dict: {'cards': int, 'emails': {'main': int, 'fusion': int, 'wool': int}}
     """
     conn = get_connection()
     cursor = conn.cursor()
