@@ -53,6 +53,22 @@ def require_api_key(f):
     return decorated_function
 
 
+@app.route('/', methods=['GET'])
+def root():
+    """Root endpoint - Railway uses this for health checks"""
+    return jsonify({
+        "status": "online",
+        "service": "Discord Bot Status API",
+        "timestamp": datetime.now().isoformat(),
+        "endpoints": {
+            "health": "/health",
+            "status": "/status",
+            "pools": "/pools",
+            "logs": "/logs"
+        }
+    })
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check endpoint"""
@@ -212,7 +228,15 @@ def start_server_thread(host: str = None, port: int = None) -> threading.Thread:
     """Start the status server in a background thread"""
     host = host or os.getenv('STATUS_API_HOST', '0.0.0.0')
     # Railway automatically sets PORT - use that first, then fall back to STATUS_API_PORT
-    port = port or int(os.getenv('PORT', os.getenv('STATUS_API_PORT', '5000')))
+    railway_port = os.getenv('PORT')
+    status_api_port = os.getenv('STATUS_API_PORT', '5000')
+    port = port or int(railway_port if railway_port else status_api_port)
+
+    print(f"[Status Server] Environment check:")
+    print(f"  - Railway PORT: {railway_port}")
+    print(f"  - STATUS_API_PORT: {status_api_port}")
+    print(f"  - Using port: {port}")
+    print(f"  - Binding to: {host}:{port}")
 
     server_thread = threading.Thread(
         target=run_server,
