@@ -341,23 +341,31 @@ This section provides a complete step-by-step guide for deploying your Discord b
 3. Choose your repository: `combinedbot` (or your repo name)
 4. Railway will automatically detect Python and start analyzing
 
+**Note:** Railway now uses **Railpack** as the default builder (Nixpacks is deprecated). Railpack will:
+- Auto-detect Python from your `requirements.txt`
+- Install all dependencies automatically
+- Use the start command from your `Procfile` or `railway.json`
+
 ## Step 3: Configure Build Settings
 **Status:** ⏳ Pending
 
-1. In the project dashboard, click on your service
-2. Go to "Settings" tab
-3. Under "Build & Deploy", verify:
-   - **Builder**: Nixpacks (default, auto-detected)
-   - **Start Command**: `python combinedbot.py`
-   - **Root Directory**: `/` (leave blank if bot is in repo root)
+Railway will automatically detect Python and use **Railpack** (their new default builder). You have two configuration options:
 
-### Alternative: Create railway.json (Recommended)
-Create a `railway.json` file in your repo root:
+### Option A: Use Procfile (Recommended - Simplest)
+
+A `Procfile` has been created in your repo:
+```
+worker: python combinedbot.py
+```
+
+This tells Railway to run your bot as a worker process (not a web server).
+
+### Option B: Use railway.json (Alternative)
+
+A `railway.json` file has been created with:
 ```json
 {
-  "build": {
-    "builder": "NIXPACKS"
-  },
+  "$schema": "https://railway.app/railway.schema.json",
   "deploy": {
     "startCommand": "python combinedbot.py",
     "restartPolicyType": "ON_FAILURE",
@@ -366,7 +374,42 @@ Create a `railway.json` file in your repo root:
 }
 ```
 
-Commit and push this file to GitHub.
+**Note:** We don't specify a builder - Railway will automatically use **Railpack** (the new default, replacing deprecated Nixpacks). Dependencies are installed automatically from `requirements.txt`.
+
+### Option C: Manual Dashboard Configuration
+
+If you get errors about build/start commands:
+
+1. In Railway dashboard, go to your service
+2. Click "Settings" tab
+3. Scroll to "Deploy" section
+4. **Clear any Build Command** (leave it empty)
+5. Set **Start Command** to: `python combinedbot.py`
+6. **Watch Command** should be empty
+7. Click "Deploy" to redeploy
+
+### Troubleshooting: "buildCommand and startCommand cannot be the same"
+
+If you see this error:
+
+**Solution 1:** Delete `railway.json`, commit, and push. Use `Procfile` instead.
+
+**Solution 2:** In Railway dashboard:
+- Go to Settings → Deploy
+- Manually clear the Build Command field (make it empty)
+- Keep Start Command as `python combinedbot.py`
+- Save and redeploy
+
+**Solution 3:** Use only the `Procfile` method and remove `railway.json`
+
+**After fixing, commit and push:**
+```bash
+git add Procfile railway.json
+git commit -m "Fix Railway configuration"
+git push origin main
+```
+
+Railway will auto-deploy with the new configuration.
 
 ## Step 4: Add Environment Variables
 **Status:** ⏳ Pending
