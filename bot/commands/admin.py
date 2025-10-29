@@ -14,7 +14,8 @@ from ..utils.card_validator import CardValidator
 from ..utils.helpers import owner_only
 import db
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db')
+# Database path - supports both local development and Railway/production
+DB_PATH = os.getenv('DB_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db'))
 
 
 def setup(bot: commands.Bot):

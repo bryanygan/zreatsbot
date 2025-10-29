@@ -105,7 +105,9 @@ EXP_MONTH = '10'
 EXP_YEAR = '35'
 ZIP_CODE = '07724'
 
-DB_PATH = Path(__file__).parent / 'data' / 'pool.db'
+# Database path - supports both local development and Railway/production
+# Railway will use: /app/data/pool.db via DB_PATH environment variable
+DB_PATH = Path(os.getenv('DB_PATH', str(Path(__file__).parent / 'data' / 'pool.db')))
 
 
 class CombinedBot(commands.Bot):

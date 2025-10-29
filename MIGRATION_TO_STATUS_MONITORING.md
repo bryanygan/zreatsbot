@@ -309,3 +309,323 @@ Common issues:
 - No need to keep your PC running
 
 The implementation is ready to deploy once you've created the new files (status_server.py, bot_monitor.py, restart_handler.py) which will be generated next.
+
+---
+
+# Railway Deployment Tutorial - Step by Step
+
+This section provides a complete step-by-step guide for deploying your Discord bot backend to Railway.
+
+## Prerequisites Checklist
+- [x] GitHub account with your bot repository pushed
+- [x] Discord bot token (BOT_TOKEN)
+- [ ] All local changes committed to Git
+- [x] Status monitoring files created (status_server.py, bot_monitor.py, restart_handler.py)
+- [x] railway.json configuration file created
+- [x] db.py updated to support environment variable for DB path
+- [x] .env.example created for documentation
+
+## Step 1: Create Railway Account
+**Status:** ⏳ Pending
+
+1. Go to https://railway.app
+2. Click "Login with GitHub"
+3. Authorize Railway to access your GitHub account
+4. Select the repository access (you can grant access to specific repos)
+
+## Step 2: Create a New Project
+**Status:** ⏳ Pending
+
+1. From Railway dashboard, click "New Project"
+2. Select "Deploy from GitHub repo"
+3. Choose your repository: `combinedbot` (or your repo name)
+4. Railway will automatically detect Python and start analyzing
+
+## Step 3: Configure Build Settings
+**Status:** ⏳ Pending
+
+1. In the project dashboard, click on your service
+2. Go to "Settings" tab
+3. Under "Build & Deploy", verify:
+   - **Builder**: Nixpacks (default, auto-detected)
+   - **Start Command**: `python combinedbot.py`
+   - **Root Directory**: `/` (leave blank if bot is in repo root)
+
+### Alternative: Create railway.json (Recommended)
+Create a `railway.json` file in your repo root:
+```json
+{
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "python combinedbot.py",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  }
+}
+```
+
+Commit and push this file to GitHub.
+
+## Step 4: Add Environment Variables
+**Status:** ⏳ Pending
+
+1. In your Railway service, go to "Variables" tab
+2. Click "New Variable" and add each of these:
+
+| Variable Name | Example Value | Description |
+|---------------|---------------|-------------|
+| `BOT_TOKEN` | `Your.Discord.Bot.Token` | Discord bot token |
+| `OWNER_ID` | `123456789012345678` | Your Discord user ID |
+| `OPENER_CHANNEL_ID` | `987654321098765432` | Channel for open/close commands |
+| `ROLE_PING_ID` | `1352022044614590494` | Role to ping for orders |
+| `ORDER_CHANNEL_MENTION` | `<#1350935337269985334>` | Order channel mention |
+| `STATUS_API_PORT` | `5000` | Port for status API |
+| `STATUS_API_HOST` | `0.0.0.0` | Host (must be 0.0.0.0 for Railway) |
+| `STATUS_API_KEY` | Generate with: `python -c "import secrets; print(secrets.token_urlsafe(32))"` | API key for status endpoints |
+| `CORS_ORIGINS` | `https://yourportfolio.com,http://localhost:4321` | Allowed origins for CORS |
+
+**Important:** Click "Add" after each variable. They'll be available on next deployment.
+
+## Step 5: Configure Persistent Storage (Database)
+**Status:** ✅ Complete
+
+Your SQLite database needs to persist across deployments.
+
+1. In your Railway service, click "New" → "Volume"
+2. Configure the volume:
+   - **Mount Path**: `/app/data`
+   - **Size**: 1 GB (more than enough for SQLite)
+3. Click "Add Volume"
+
+**✅ Database Path Updated:** All files have been updated to support environment variable:
+- `db.py` - Main database module
+- `combinedbot.py` - Bot entry point
+- `add_to_pool.py` - Pool management script
+- `bot/commands/admin.py` - Admin commands
+- `bot/commands/order.py` - Order commands
+
+The code now uses: `DB_PATH = os.getenv('DB_PATH', 'default/local/path')`
+
+Then set environment variable `DB_PATH=/app/data/pool.db` in Railway.
+
+## Step 6: Get Your Railway URL
+**Status:** ⏳ Pending
+
+1. Go to "Settings" tab
+2. Under "Networking", click "Generate Domain"
+3. Railway will provide a public URL like: `your-project.up.railway.app`
+4. Copy this URL - you'll need it for your portfolio site
+
+**Note:** This is your status API endpoint. The full status URL will be:
+```
+https://your-project.up.railway.app/status
+```
+
+## Step 7: Deploy
+**Status:** ⏳ Pending
+
+1. Railway automatically deploys when you push to your GitHub repo
+2. To manually trigger deployment:
+   - Click "Deployments" tab
+   - Click "Deploy" button
+3. Watch the build logs in real-time
+4. Wait for "Success" status
+
+### Troubleshooting Common Deployment Issues
+
+**Build fails with "No module found":**
+- Ensure `requirements.txt` is in repo root
+- Verify all dependencies are listed
+- Check Python version compatibility
+
+**Bot doesn't start:**
+- Check environment variables are set correctly
+- View logs in Railway dashboard
+- Ensure BOT_TOKEN is valid
+
+**Database errors:**
+- Verify volume is mounted to `/app/data`
+- Check DB_PATH environment variable
+- Ensure database initialization runs on first start
+
+## Step 8: Verify Deployment
+**Status:** ⏳ Pending
+
+Test your deployed bot:
+
+1. **Check Discord Connection:**
+   - Open Discord
+   - Verify bot is online (or invisible if configured)
+   - Test a command like `/pool_status`
+
+2. **Test Status API:**
+   ```bash
+   curl https://your-project.up.railway.app/status
+   ```
+   Should return:
+   ```json
+   {
+     "status": "online",
+     "uptime": 123.45,
+     "last_command": "pool_status",
+     ...
+   }
+   ```
+
+3. **Check Logs:**
+   - In Railway dashboard, go to "Deployments"
+   - Click on the active deployment
+   - View logs to ensure no errors
+
+## Step 9: Set Up GitHub Auto-Deploy
+**Status:** ⏳ Pending
+
+Railway automatically deploys on push, but you can configure it:
+
+1. Go to "Settings" tab
+2. Under "GitHub Integration":
+   - **Branch**: Set to `main` or your deployment branch
+   - **Auto-deploy**: Toggle ON
+3. Now every push to your branch auto-deploys to Railway
+
+**Recommended workflow:**
+```bash
+# Make changes locally
+git add .
+git commit -m "Update bot feature"
+git push origin main
+
+# Railway automatically deploys (30-60 seconds later)
+```
+
+## Step 10: Update Portfolio to Use Railway Backend
+**Status:** ⏳ Pending
+
+Update your portfolio's bot status page to fetch from Railway:
+
+1. Find your status page (likely in `src/pages/bot-status.astro`)
+2. Update the API endpoint:
+   ```javascript
+   const API_URL = 'https://your-project.up.railway.app';
+
+   // Fetch status
+   const response = await fetch(`${API_URL}/status`);
+   ```
+
+3. Update CORS environment variable in Railway:
+   ```
+   CORS_ORIGINS=https://yourportfolio.com
+   ```
+
+4. Deploy portfolio and test
+
+## Step 11: Set Up Monitoring & Alerts (Optional)
+**Status:** ⏳ Pending
+
+Railway provides built-in monitoring:
+
+1. In Railway dashboard, click "Observability"
+2. View metrics:
+   - CPU usage
+   - Memory usage
+   - Network traffic
+   - Deployment history
+
+**Optional: Set up external monitoring**
+- Use UptimeRobot or similar to ping your `/status` endpoint
+- Get alerts if bot goes down
+- Free tier available at https://uptimerobot.com
+
+## Step 12: Database Backup Strategy
+**Status:** ⏳ Pending
+
+Since Railway volumes persist, set up periodic backups:
+
+**Option 1: Manual Backup**
+1. Install Railway CLI: `npm install -g @railway/cli`
+2. Login: `railway login`
+3. Connect to project: `railway link`
+4. Download database:
+   ```bash
+   railway run cat /app/data/pool.db > backup_$(date +%Y%m%d).db
+   ```
+
+**Option 2: Automated Backup (Advanced)**
+- Add a scheduled task to your bot that exports database to cloud storage
+- Use AWS S3, Google Cloud Storage, or Dropbox API
+- Schedule with `apscheduler` in Python
+
+## Cost Estimation
+
+Railway pricing (as of 2024):
+- **Free Trial**: $5 credit (enough for testing)
+- **Hobby Plan**: $5/month for 500 hours
+- **Your bot usage**: ~730 hours/month (24/7)
+  - Cost: ~$7-10/month
+  - Includes: 8GB RAM, 8 vCPU, 100GB network
+
+**Optimization to stay under $10/month:**
+- Use minimal resources (bot doesn't need much)
+- Monitor usage in Railway dashboard
+- Scale down if needed
+
+## Deployment Checklist
+
+Before going live, verify:
+
+- [ ] All environment variables set in Railway
+- [ ] Persistent volume configured and mounted
+- [ ] Bot connects to Discord successfully
+- [ ] Status API responds to requests
+- [ ] Database persists across restarts
+- [ ] CORS configured for portfolio domain
+- [ ] Auto-deploy enabled for GitHub pushes
+- [ ] Logs show no errors
+- [ ] Portfolio site fetches status correctly
+- [ ] Restart endpoint works (test with caution)
+
+## Next Steps After Successful Deployment
+
+1. Monitor bot for 24 hours to ensure stability
+2. Test all Discord commands
+3. Verify database operations (add/remove cards, emails)
+4. Check status page on portfolio updates in real-time
+5. Test remote restart functionality
+6. Set up UptimeRobot monitoring
+7. Document any issues encountered
+
+## Rolling Back a Deployment
+
+If a deployment breaks something:
+
+1. In Railway dashboard, go to "Deployments"
+2. Find the last working deployment
+3. Click "..." menu → "Redeploy"
+4. Railway restores that version
+
+Alternatively, revert in Git:
+```bash
+git revert HEAD
+git push origin main
+# Railway auto-deploys the reverted version
+```
+
+## Success Criteria
+
+Your deployment is successful when:
+- ✅ Bot shows online in Discord
+- ✅ All slash commands work
+- ✅ Status API returns correct data
+- ✅ Portfolio site displays real-time status
+- ✅ Database persists across restarts
+- ✅ Bot runs for 24+ hours without issues
+- ✅ Remote restart works
+- ✅ Logs are accessible in Railway dashboard
+
+---
+
+**Current Status:** Ready to begin deployment
+**Estimated Time:** 30-45 minutes for first-time setup
+**Support:** Railway has great documentation at https://docs.railway.app

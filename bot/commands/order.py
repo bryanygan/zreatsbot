@@ -30,7 +30,9 @@ import db
 EXP_MONTH = '10'
 EXP_YEAR = '35'
 ZIP_CODE = '07724'
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db')
+
+# Database path - supports both local development and Railway/production
+DB_PATH = os.getenv('DB_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db'))
 
 def clean_tip_amount(tip_str):
     """Extract numeric tip value, removing all non-numeric characters except decimal point"""
