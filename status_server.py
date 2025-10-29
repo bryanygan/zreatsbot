@@ -211,7 +211,8 @@ def run_server(host: str = '0.0.0.0', port: int = 5000, debug: bool = False):
 def start_server_thread(host: str = None, port: int = None) -> threading.Thread:
     """Start the status server in a background thread"""
     host = host or os.getenv('STATUS_API_HOST', '0.0.0.0')
-    port = port or int(os.getenv('STATUS_API_PORT', '5000'))
+    # Railway automatically sets PORT - use that first, then fall back to STATUS_API_PORT
+    port = port or int(os.getenv('PORT', os.getenv('STATUS_API_PORT', '5000')))
 
     server_thread = threading.Thread(
         target=run_server,

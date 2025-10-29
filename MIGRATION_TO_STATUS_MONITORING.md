@@ -424,12 +424,15 @@ Railway will auto-deploy with the new configuration.
 | `OPENER_CHANNEL_ID` | `987654321098765432` | Channel for open/close commands |
 | `ROLE_PING_ID` | `1352022044614590494` | Role to ping for orders |
 | `ORDER_CHANNEL_MENTION` | `<#1350935337269985334>` | Order channel mention |
-| `STATUS_API_PORT` | `5000` | Port for status API |
 | `STATUS_API_HOST` | `0.0.0.0` | Host (must be 0.0.0.0 for Railway) |
 | `STATUS_API_KEY` | Generate with: `python -c "import secrets; print(secrets.token_urlsafe(32))"` | API key for status endpoints |
 | `CORS_ORIGINS` | `https://yourportfolio.com,http://localhost:4321` | Allowed origins for CORS |
+| `DB_PATH` | `/app/data/pool.db` | Database path on Railway volume |
 
-**Important:** Click "Add" after each variable. They'll be available on next deployment.
+**Important Notes:**
+- Click "Add" after each variable. They'll be available on next deployment.
+- **DO NOT** set `PORT` or `STATUS_API_PORT` - Railway automatically sets `PORT` and the bot will use it
+- **DO NOT** set a custom port in Railway's Networking settings - Railway handles this automatically
 
 ## Step 5: Configure Persistent Storage (Database)
 **Status:** ✅ Complete
@@ -454,17 +457,19 @@ The code now uses: `DB_PATH = os.getenv('DB_PATH', 'default/local/path')`
 Then set environment variable `DB_PATH=/app/data/pool.db` in Railway.
 
 ## Step 6: Get Your Railway URL
-**Status:** ⏳ Pending
+**Status:** ✅ Complete (In Progress)
 
-1. Go to "Settings" tab
-2. Under "Networking", click "Generate Domain"
+1. Go to "Settings" tab in your Railway service
+2. Under "Networking" section, click "Generate Domain"
 3. Railway will provide a public URL like: `your-project.up.railway.app`
-4. Copy this URL - you'll need it for your portfolio site
+4. **Copy this URL** - you'll need it for your portfolio site
 
 **Note:** This is your status API endpoint. The full status URL will be:
 ```
 https://your-project.up.railway.app/status
 ```
+
+**Important:** Make sure the domain is generated and the service shows as "Active" with a green indicator.
 
 ## Step 7: Deploy
 **Status:** ⏳ Pending
