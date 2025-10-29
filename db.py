@@ -1,10 +1,13 @@
 import sqlite3
+import os
 from pathlib import Path
 from queue import SimpleQueue, Empty
 from typing import Optional, Tuple
 
 # Path to the SQLite database file
-DB_PATH = Path(__file__).parent / 'data' / 'pool.db'
+# Support both local development and Railway/production environments
+# Railway will use: /app/data/pool.db via environment variable
+DB_PATH = Path(os.getenv('DB_PATH', str(Path(__file__).parent / 'data' / 'pool.db')))
 
 # Module-level database connection
 DB_CONN = None
