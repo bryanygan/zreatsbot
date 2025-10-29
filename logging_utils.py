@@ -22,7 +22,7 @@ def log_command_output(
 ):
     """
     Log command output to multiple formats (JSON, CSV, and TXT)
-    
+
     Args:
         command_type: Type of command (fusion_assist, fusion_order, wool_order, pump_order)
         user_id: Discord user ID
@@ -36,6 +36,22 @@ def log_command_output(
         additional_data: Any additional data to log (including email_pool)
     """
     timestamp = datetime.now()
+
+    # Track command in monitor for status monitoring
+    try:
+        from bot_monitor import get_monitor
+        monitor = get_monitor()
+        monitor.record_command(
+            command_type=command_type,
+            user=username,
+            channel=str(channel_id),
+            user_id=user_id,
+            guild_id=guild_id,
+            email_used=email_used,
+            card_used=bool(card_used)
+        )
+    except ImportError:
+        pass  # Status monitoring not available
     
     # Extract digits 9-16 from card number (0-indexed, so positions 8-15)
     card_digits_9_12 = None

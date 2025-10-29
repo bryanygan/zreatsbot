@@ -5,6 +5,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from pathlib import Path
 from typing import Optional, Tuple
+import asyncio
 
 try:
     from db import (
@@ -44,6 +45,16 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for tests
         get_full_logs,
         get_log_stats,
     )
+
+# Import status monitoring modules
+try:
+    from bot_monitor import get_monitor
+    from status_server import start_server_thread
+    from restart_handler import restart_check_loop
+    STATUS_MONITORING_ENABLED = True
+except ImportError:
+    print("⚠️ Status monitoring modules not found. Install dependencies: pip install flask flask-cors psutil")
+    STATUS_MONITORING_ENABLED = False
 
 # optional package imports with fallback
 try:
@@ -165,15 +176,19 @@ def main():
     async def on_ready():
         # Ensure bot stays invisible
         await bot.change_presence(status=discord.Status.invisible)
-        
+
         print(f'🤖 {bot.user} has connected to Discord (invisible)')
-        
+
         # Sync slash commands
         try:
             synced = await bot.tree.sync()
             print(f"✅ Synced {len(synced)} command(s)")
         except Exception as e:
             print(f"❌ Failed to sync commands: {e}")
+
+        # Start restart check loop if status monitoring is enabled
+        if STATUS_MONITORING_ENABLED:
+            bot.loop.create_task(restart_check_loop(bot))
 
     # Update your on_message event in combinedbot.py:
 
@@ -249,7 +264,7 @@ if __name__ == "__main__":
     print("🚀 Starting Discord bot...")
     print(f"🔓 Opener channel: {OPENER_CHANNEL_ID or 'Not configured'}")
     print(f"👑 Owner ID: {OWNER_ID or 'Not configured'}")
-    
+
     # Show pool information on startup
     try:
         import db
@@ -260,5 +275,13 @@ if __name__ == "__main__":
             print(f"   {pool_name} emails: {count}")
     except Exception as e:
         print(f"⚠️ Could not get pool status: {e}")
-    
+
+    # Start status monitoring server if enabled
+    if STATUS_MONITORING_ENABLED:
+        try:
+            start_server_thread()
+            print("📡 Status monitoring API started")
+        except Exception as e:
+            print(f"⚠️ Failed to start status server: {e}")
+
     bot.run(BOT_TOKEN)
