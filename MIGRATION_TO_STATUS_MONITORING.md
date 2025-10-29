@@ -450,6 +450,155 @@ https://your-project.up.railway.app/status
 - Check DB_PATH environment variable
 - Ensure database initialization runs on first start
 
+## Step 7.5: Migrate Local Database to Railway
+**Status:** ⏳ Pending
+
+After your first deployment succeeds, you'll want to migrate your existing local database (cards and emails) to Railway.
+
+### Option A: Using Railway CLI (Recommended - Fastest)
+
+1. **Install Railway CLI:**
+   ```bash
+   npm install -g @railway/cli
+   ```
+
+2. **Login to Railway:**
+   ```bash
+   railway login
+   ```
+
+3. **Link to your project:**
+   ```bash
+   cd C:\Users\prinp\Documents\GitHub\combinedbot
+   railway link
+   ```
+   Select your project from the list.
+
+4. **Check your local database has data:**
+   ```bash
+   # Windows PowerShell
+   Get-Item .\data\pool.db | Select-Object Name, Length
+   ```
+
+5. **Upload database to Railway volume:**
+   ```bash
+   railway run --service combinedbot "mkdir -p /app/data"
+   railway run --service combinedbot "cat > /app/data/pool.db" < .\data\pool.db
+   ```
+
+6. **Verify upload (optional):**
+   ```bash
+   railway run --service combinedbot "ls -lh /app/data/pool.db"
+   ```
+
+7. **Restart the bot to use new database:**
+   - In Railway dashboard, go to your service
+   - Click "..." menu → "Restart"
+
+### Option B: Export and Re-import Data (If CLI doesn't work)
+
+1. **Export your local data to CSV:**
+
+   Create a file `export_database.py`:
+   ```python
+   import sqlite3
+   import csv
+   from pathlib import Path
+
+   DB_PATH = Path(__file__).parent / 'data' / 'pool.db'
+
+   conn = sqlite3.connect(DB_PATH)
+   cursor = conn.cursor()
+
+   # Export cards
+   cursor.execute('SELECT number, cvv FROM cards')
+   cards = cursor.fetchall()
+   with open('cards_backup.csv', 'w', newline='') as f:
+       writer = csv.writer(f)
+       writer.writerow(['number', 'cvv'])
+       writer.writerows(cards)
+
+   # Export emails with pools
+   cursor.execute('SELECT email, pool_type FROM emails')
+   emails = cursor.fetchall()
+   with open('emails_backup.csv', 'w', newline='') as f:
+       writer = csv.writer(f)
+       writer.writerow(['email', 'pool_type'])
+       writer.writerows(emails)
+
+   conn.close()
+   print(f"✅ Exported {len(cards)} cards to cards_backup.csv")
+   print(f"✅ Exported {len(emails)} emails to emails_backup.csv")
+   ```
+
+   Run it:
+   ```bash
+   python export_database.py
+   ```
+
+2. **After Railway deployment, use Discord commands to re-add data:**
+
+   You can use the bulk upload commands via Discord:
+   - `/bulk_add_cards` - Upload `cards_backup.csv`
+   - `/bulk_add_emails` - Upload `emails_backup.csv`
+
+### Option C: Use Railway Shell (Advanced)
+
+1. **Open Railway dashboard → your service**
+
+2. **Click "Shell" tab** (if available in your plan)
+
+3. **Check if database directory exists:**
+   ```bash
+   ls -la /app/data
+   ```
+
+4. **You can then use `scp` or upload via a temporary endpoint**
+
+### Verification After Migration
+
+After migrating, verify your data in Railway:
+
+1. **Check pool counts via Discord:**
+   - Run `/pool_status` command in Discord
+   - Should show your cards and emails
+
+2. **Or check via status API:**
+   ```bash
+   curl https://your-project.up.railway.app/pools
+   ```
+
+3. **Expected output:**
+   ```json
+   {
+     "success": true,
+     "pools": {
+       "cards": 50,
+       "emails": {
+         "main": 100,
+         "fusion": 25,
+         "wool": 10
+       }
+     }
+   }
+   ```
+
+### Important Notes
+
+- **Backup first:** Always keep a local backup of `data/pool.db`
+- **Empty database:** Railway starts with an empty database (initialized tables, no data)
+- **No downtime:** Your bot will work fine with an empty database initially
+- **Test first:** You can deploy and test without migrating data, then migrate later
+- **One-time process:** You only need to do this once
+
+### What if something goes wrong?
+
+If the migration fails:
+1. Your local database is unchanged
+2. Railway's database is just empty (not corrupted)
+3. You can retry the migration process
+4. Or manually re-add data using Discord commands
+
 ## Step 8: Verify Deployment
 **Status:** ⏳ Pending
 
@@ -576,9 +725,12 @@ Railway pricing (as of 2024):
 Before going live, verify:
 
 - [ ] All environment variables set in Railway
-- [ ] Persistent volume configured and mounted
+- [ ] Persistent volume configured and mounted (mount path: `/app/data`)
+- [ ] `DB_PATH=/app/data/pool.db` environment variable set
 - [ ] Bot connects to Discord successfully
 - [ ] Status API responds to requests
+- [ ] **Database migrated from local** (use `export_database.py` or Railway CLI)
+- [ ] Verify pool counts match local database
 - [ ] Database persists across restarts
 - [ ] CORS configured for portfolio domain
 - [ ] Auto-deploy enabled for GitHub pushes
