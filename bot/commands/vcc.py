@@ -5,7 +5,7 @@ from ..utils.helpers import owner_only
 import db
 
 EXP_MONTH = '10'
-EXP_YEAR = '30'
+EXP_YEAR = '35'
 ZIP_CODE = '07724'
 
 def setup(bot: commands.Bot):

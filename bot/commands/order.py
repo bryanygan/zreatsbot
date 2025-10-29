@@ -28,7 +28,7 @@ from logging_utils import log_command_output
 import db
 
 EXP_MONTH = '10'
-EXP_YEAR = '30'
+EXP_YEAR = '35'
 ZIP_CODE = '07724'
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db')
 

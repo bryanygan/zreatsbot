@@ -189,7 +189,7 @@ ORDER_CHANNEL_MENTION=<#1350935337269985334>
 ### Hardcoded Constants
 ```python
 EXP_MONTH = '06'          # Credit card expiration month
-EXP_YEAR = '30'           # Credit card expiration year  
+EXP_YEAR = '35'           # Credit card expiration year  
 ZIP_CODE = '19104'        # ZIP code for orders
 ```
 
