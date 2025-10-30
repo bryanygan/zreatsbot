@@ -355,10 +355,14 @@ Railway will automatically detect Python and use **Railpack** (their new default
 
 A `Procfile` has been created in your repo:
 ```
-worker: python combinedbot.py
+web: python combinedbot.py
 ```
 
-This tells Railway to run your bot as a worker process (not a web server).
+**Important:** Use `web:` not `worker:` because:
+- `web:` - Railway routes HTTP traffic to this process (required for status API)
+- `worker:` - Background process, no HTTP routing (won't work for our API)
+
+Even though this is a Discord bot, we need `web:` so Railway's load balancer routes requests to the status API.
 
 ### Option B: Use railway.json (Alternative)
 
