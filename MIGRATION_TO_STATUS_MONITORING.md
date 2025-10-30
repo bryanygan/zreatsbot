@@ -431,7 +431,7 @@ Railway will auto-deploy with the new configuration.
 | `ORDER_CHANNEL_MENTION` | `<#1350935337269985334>` | Order channel mention |
 | `STATUS_API_HOST` | `0.0.0.0` | Host (must be 0.0.0.0 for Railway) |
 | `STATUS_API_KEY` | Generate with: `python -c "import secrets; print(secrets.token_urlsafe(32))"` | API key for status endpoints |
-| `CORS_ORIGINS` | `https://yourportfolio.com,http://localhost:4321` | Allowed origins for CORS |
+| `CORS_ORIGINS` | `https://bryangan.com,http://localhost:4321` | Allowed origins for CORS |
 | `DB_PATH` | `/app/data/pool.db` | Database path on Railway volume |
 
 **Important Notes:**
@@ -462,19 +462,16 @@ The code now uses: `DB_PATH = os.getenv('DB_PATH', 'default/local/path')`
 Then set environment variable `DB_PATH=/app/data/pool.db` in Railway.
 
 ## Step 6: Get Your Railway URL
-**Status:** ✅ Complete (In Progress)
+**Status:** ✅ Complete
 
-1. Go to "Settings" tab in your Railway service
-2. Under "Networking" section, click "Generate Domain"
-3. Railway will provide a public URL like: `your-project.up.railway.app`
-4. **Copy this URL** - you'll need it for your portfolio site
+Railway URL: `https://zreatsbot-production.up.railway.app`
 
-**Note:** This is your status API endpoint. The full status URL will be:
-```
-https://your-project.up.railway.app/status
-```
-
-**Important:** Make sure the domain is generated and the service shows as "Active" with a green indicator.
+Verified endpoints working:
+- ✅ Root: `https://zreatsbot-production.up.railway.app/`
+- ✅ Status: `https://zreatsbot-production.up.railway.app/status`
+- ✅ Pools: `https://zreatsbot-production.up.railway.app/pools`
+- ✅ Health: `https://zreatsbot-production.up.railway.app/health`
+- ✅ Logs: `https://zreatsbot-production.up.railway.app/logs`
 
 ## Step 7: Deploy
 **Status:** ⏳ Pending
@@ -703,25 +700,20 @@ git push origin main
 ```
 
 ## Step 10: Update Portfolio to Use Railway Backend
-**Status:** ⏳ Pending
+**Status:** ✅ Complete
 
-Update your portfolio's bot status page to fetch from Railway:
+Portfolio has been updated to connect to Railway:
 
-1. Find your status page (likely in `src/pages/bot-status.astro`)
-2. Update the API endpoint:
-   ```javascript
-   const API_URL = 'https://your-project.up.railway.app';
+1. **Default API URL**: `https://zreatsbot-production.up.railway.app`
+2. **Portfolio updated**: `src/pages/bot-status.astro` now defaults to Railway backend
+3. **CORS configured**: Railway accepts requests from portfolio domain
+4. **Changes pushed**: Portfolio repository updated
 
-   // Fetch status
-   const response = await fetch(`${API_URL}/status`);
-   ```
-
-3. Update CORS environment variable in Railway:
-   ```
-   CORS_ORIGINS=https://yourportfolio.com
-   ```
-
-4. Deploy portfolio and test
+**To use:**
+- Open your portfolio's `/bot-status` page
+- The Railway URL is pre-filled
+- Optionally add your API key for restart functionality
+- Status, pools, and logs will load automatically
 
 ## Step 11: Set Up Monitoring & Alerts (Optional)
 **Status:** ⏳ Pending
