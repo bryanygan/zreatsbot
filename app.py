@@ -8,34 +8,105 @@ import os
 import threading
 import time
 
-# Start Discord bot in background before importing Flask app
+# Set environment variable to prevent combinedbot from starting its own status server
+os.environ['RAILWAY_DEPLOYMENT'] = '1'
+
+# Start Discord bot in background
 def start_discord_bot():
     """Start Discord bot in a background thread"""
     # Small delay to let Flask initialize first
-    time.sleep(2)
+    time.sleep(3)
 
     print("🤖 Starting Discord bot in background thread...")
+
+    # Import and run bot directly without starting status server
     import combinedbot
+    bot = combinedbot.CombinedBot()
 
-    bot = combinedbot.main()
     BOT_TOKEN = os.getenv('BOT_TOKEN') or os.getenv('DISCORD_TOKEN')
-
     if not BOT_TOKEN:
         print("❌ Missing BOT_TOKEN in environment")
         return
 
-    # Run bot (this will block this thread, but Flask runs in main thread)
+    # Setup event handlers
+    @bot.event
+    async def on_ready():
+        await bot.change_presence(status=discord.Status.invisible)
+        print(f'🤖 {bot.user} has connected to Discord (invisible)')
+        try:
+            synced = await bot.tree.sync()
+            print(f"✅ Synced {len(synced)} command(s)")
+        except Exception as e:
+            print(f"❌ Failed to sync commands: {e}")
+
+    @bot.event
+    async def on_message(message):
+        if message.author.bot:
+            return
+        OPENER_CHANNEL_ID = int(os.getenv('OPENER_CHANNEL_ID')) if os.getenv('OPENER_CHANNEL_ID') else None
+        if OPENER_CHANNEL_ID and message.channel.id == OPENER_CHANNEL_ID:
+            from bot.utils import channel_status
+            content = message.content.lower().strip()
+            if content == "open":
+                status = "open"
+            elif content in ("close", "closed"):
+                status = "close"
+            elif content in ("break", "on hold", "hold"):
+                status = "break"
+            else:
+                await bot.process_commands(message)
+                return
+            success, error = await channel_status.change_channel_status(message.channel, status)
+            if success:
+                await message.add_reaction("✅")
+            else:
+                await message.add_reaction("❌")
+                await message.channel.send(f"{message.author.mention} ❌ {error}", delete_after=10)
+
+        # Webhook handling
+        if message.webhook_id and message.embeds:
+            from bot.utils import helpers
+            for embed in message.embeds:
+                field_names = {f.name for f in embed.fields}
+                is_webhook, webhook_type = helpers.detect_webhook_type(embed, field_names)
+                if is_webhook:
+                    try:
+                        data = helpers.parse_webhook_fields(embed)
+                        success = helpers.cache_webhook_data(
+                            data,
+                            message_timestamp=message.created_at,
+                            message_id=message.id
+                        )
+                        if success:
+                            print(f"📦 Cached {data.get('type', 'unknown')} webhook")
+                    except Exception as e:
+                        print(f"❌ Error parsing webhook: {str(e)}")
+
+        await bot.process_commands(message)
+
+    # Setup commands
+    from bot.commands import order as order_commands, admin as admin_commands, channel as channel_commands, vcc as vcc_commands
+    channel_commands.setup(bot)
+    order_commands.setup(bot)
+    admin_commands.setup(bot)
+    vcc_commands.setup(bot)
+
+    # Run bot (this will block this thread)
+    print("🚀 Discord bot starting...")
     bot.run(BOT_TOKEN)
+
+# Import discord here for the event handlers
+import discord
 
 # Start bot thread (non-daemon so it keeps running)
 print("🚀 Launching Discord bot thread...")
 bot_thread = threading.Thread(target=start_discord_bot, daemon=False, name='DiscordBotThread')
 bot_thread.start()
 
-# Import Flask app (this must be after bot thread starts)
+# Import Flask app
 from status_server import app
 
-# Flask will run in main thread when Railway/gunicorn starts this
+# Flask will run in main thread
 if __name__ == '__main__':
     # Get port from Railway environment
     port = int(os.getenv('PORT', 5000))
@@ -44,5 +115,5 @@ if __name__ == '__main__':
     print(f"🌐 Starting Flask server on {host}:{port} (main thread)")
     print("📡 Discord bot running in background thread")
 
-    # Run Flask in main thread (not daemon) - Railway can connect to this
+    # Run Flask in main thread - Railway can connect to this
     app.run(host=host, port=port, debug=False, threaded=True, use_reloader=False)
