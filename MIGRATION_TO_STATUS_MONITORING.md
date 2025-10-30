@@ -355,13 +355,14 @@ Railway will automatically detect Python and use **Railpack** (their new default
 
 A `Procfile` has been created in your repo:
 ```
-web: python app.py
+web: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 2 --timeout 120 app:app
 ```
 
 **Important:**
-- Uses `web:` process type so Railway routes HTTP traffic to the status API
-- `app.py` runs Flask as the main process (required for Railway health checks)
-- Discord bot runs in a background thread
+- Uses **gunicorn** (production WSGI server) instead of Flask's development server
+- `web:` process type so Railway routes HTTP traffic to the status API
+- `app.py` loads Flask app and starts Discord bot in background thread
+- gunicorn serves the Flask API on Railway's assigned PORT
 - For local development, continue using: `python combinedbot.py`
 
 ### Option B: Use railway.json (Alternative)

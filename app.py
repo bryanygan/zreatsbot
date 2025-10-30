@@ -103,17 +103,16 @@ print("🚀 Launching Discord bot thread...")
 bot_thread = threading.Thread(target=start_discord_bot, daemon=False, name='DiscordBotThread')
 bot_thread.start()
 
-# Import Flask app
-from status_server import app
+# Import Flask app - this is what gunicorn will use
+from status_server import app as application
+app = application  # gunicorn looks for 'app' object
 
-# Flask will run in main thread
+print(f"✅ Flask app loaded and ready for gunicorn")
+print(f"📡 Discord bot running in background thread")
+
+# For local testing only (not used by gunicorn)
 if __name__ == '__main__':
-    # Get port from Railway environment
     port = int(os.getenv('PORT', 5000))
     host = os.getenv('STATUS_API_HOST', '0.0.0.0')
-
-    print(f"🌐 Starting Flask server on {host}:{port} (main thread)")
-    print("📡 Discord bot running in background thread")
-
-    # Run Flask in main thread - Railway can connect to this
+    print(f"🌐 Starting Flask server on {host}:{port} (development mode)")
     app.run(host=host, port=port, debug=False, threaded=True, use_reloader=False)
