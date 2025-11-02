@@ -103,7 +103,7 @@ ORDER_CHANNEL_MENTION = os.getenv('ORDER_CHANNEL_MENTION', '<#135093533726998533
 
 EXP_MONTH = '10'
 EXP_YEAR = '35'
-ZIP_CODE = '07724'
+ZIP_CODE = '19104'
 
 # Database path - supports both local development and Railway/production
 # Railway will use: /app/data/pool.db via DB_PATH environment variable

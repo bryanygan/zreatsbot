@@ -6,7 +6,7 @@ import db
 
 EXP_MONTH = '10'
 EXP_YEAR = '35'
-ZIP_CODE = '07724'
+ZIP_CODE = '19104'
 
 def setup(bot: commands.Bot):
     @bot.tree.command(name='vcc', description='Pull a card from the pool in order format')

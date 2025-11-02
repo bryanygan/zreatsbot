@@ -359,7 +359,7 @@ The bot automatically detects and caches order confirmations from delivery servi
 The following are hardcoded but can be modified in the source:
 - `EXP_MONTH = '08'` - Credit card expiration month
 - `EXP_YEAR = '35'` - Credit card expiration year
-- `ZIP_CODE = '07724'` - ZIP code for orders
+- `ZIP_CODE = '19104'` - ZIP code for orders
 
 ## Troubleshooting
 
