@@ -71,6 +71,22 @@ def init_db():
         cursor.execute("ALTER TABLE emails ADD COLUMN pool_type TEXT NOT NULL DEFAULT 'main'")
         cursor.execute("UPDATE emails SET pool_type = 'main' WHERE pool_type IS NULL OR pool_type = ''")
 
+    # Table for storing payment method settings
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS payment_settings (
+            method TEXT PRIMARY KEY,
+            enabled INTEGER NOT NULL DEFAULT 1
+        )
+    ''')
+
+    # Initialize default payment methods if they don't exist
+    default_methods = ['zelle', 'venmo', 'paypal', 'cashapp', 'crypto']
+    for method in default_methods:
+        cursor.execute(
+            'INSERT OR IGNORE INTO payment_settings (method, enabled) VALUES (?, 1)',
+            (method,)
+        )
+
     conn.commit()
     conn.close()
 
@@ -295,6 +311,55 @@ def get_and_remove_card():
 def get_and_remove_email_legacy():
     """Legacy function that uses the main pool - for backward compatibility"""
     return get_and_remove_email('main')
+
+
+def get_payment_setting(method: str) -> bool:
+    """
+    Get the enabled state of a payment method from the database.
+
+    Args:
+        method: Payment method name (e.g., 'cashapp', 'zelle', etc.)
+
+    Returns:
+        bool: True if enabled, False if disabled
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT enabled FROM payment_settings WHERE method = ?', (method.lower(),))
+    row = cursor.fetchone()
+    # Default to True if not found
+    return bool(row[0]) if row else True
+
+
+def set_payment_setting(method: str, enabled: bool) -> None:
+    """
+    Set the enabled state of a payment method in the database.
+
+    Args:
+        method: Payment method name (e.g., 'cashapp', 'zelle', etc.)
+        enabled: True to enable, False to disable
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT OR REPLACE INTO payment_settings (method, enabled) VALUES (?, ?)',
+        (method.lower(), 1 if enabled else 0)
+    )
+    conn.commit()
+
+
+def get_all_payment_settings() -> dict:
+    """
+    Get all payment method settings from the database.
+
+    Returns:
+        dict: Dictionary mapping payment method names to their enabled states
+    """
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT method, enabled FROM payment_settings')
+    rows = cursor.fetchall()
+    return {method: bool(enabled) for method, enabled in rows}
 
 
 # Initialize DB on import and create the shared connection

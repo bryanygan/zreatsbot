@@ -1,21 +1,36 @@
 import discord
 from discord.ui import View, Button
 from discord import ButtonStyle
+import db
 
 # Global variables to control payment method visibility
-PAYMENT_METHODS_ENABLED = {
-    'zelle': True,
-    'venmo': True,
-    'paypal': True,
-    'cashapp': True,
-    'crypto': True
-}
+# Load from database on startup, fallback to defaults if database isn't available
+try:
+    PAYMENT_METHODS_ENABLED = db.get_all_payment_settings()
+    # Ensure all methods exist in case new ones are added
+    for method in ['zelle', 'venmo', 'paypal', 'cashapp', 'crypto']:
+        if method not in PAYMENT_METHODS_ENABLED:
+            PAYMENT_METHODS_ENABLED[method] = True
+except Exception:
+    # Fallback to defaults if database isn't ready
+    PAYMENT_METHODS_ENABLED = {
+        'zelle': True,
+        'venmo': True,
+        'paypal': True,
+        'cashapp': True,
+        'crypto': True
+    }
 
 def set_payment_enabled(method: str, enabled: bool):
-    """Set the payment method button visibility"""
+    """Set the payment method button visibility and persist to database"""
     global PAYMENT_METHODS_ENABLED
     if method.lower() in PAYMENT_METHODS_ENABLED:
         PAYMENT_METHODS_ENABLED[method.lower()] = enabled
+        # Persist to database
+        try:
+            db.set_payment_setting(method.lower(), enabled)
+        except Exception as e:
+            print(f"Warning: Failed to persist payment setting to database: {e}")
         return True
     return False
 
