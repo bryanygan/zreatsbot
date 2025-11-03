@@ -27,7 +27,7 @@ from ..utils.channel_status import rename_history
 from logging_utils import log_command_output
 import db
 
-EXP_MONTH = '10'
+EXP_MONTH = '11'
 EXP_YEAR = '35'
 ZIP_CODE = '19104'
 
