@@ -841,6 +841,131 @@ def setup(bot: commands.Bot):
             print(f"Failed to send wool order response: {e}")
             return
 
+    @bot.tree.command(name='tomato_order', description='Format a Tomato order')
+    @app_commands.describe(
+        custom_email='Optional: Use a specific email instead of pool',
+        card_number='Optional: Use a specific card number instead of pool',
+        card_cvv='Optional: CVV for custom card'
+    )
+    async def tomato_order(interaction: discord.Interaction, custom_email: str = None,
+                        card_number: str = None, card_cvv: str = None):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ You are not authorized.", ephemeral=True)
+
+        if card_number and not card_cvv:
+            return await interaction.response.send_message("❌ CVV required when using custom card number.", ephemeral=True)
+        if card_cvv and not card_number:
+            return await interaction.response.send_message("❌ Card number required when using custom CVV.", ephemeral=True)
+
+        # Send initial response to prevent timeout
+        try:
+            await interaction.response.send_message("Processing tomato order...", ephemeral=True)
+        except discord.errors.NotFound:
+            return
+        except discord.HTTPException:
+            return
+
+        embed = await fetch_ticket_embed(interaction.channel)
+        if embed is None:
+            return await interaction.followup.send("❌ Could not find order embed.", ephemeral=True)
+
+        info = parse_fields(embed)
+
+        was_last_card = False
+        if card_number and card_cvv:
+            number, cvv = card_number, card_cvv
+            card = (number, cvv)
+            card_source = "custom"
+        else:
+            card_result = bot.get_and_remove_card()
+            if card_result is None:
+                return await interaction.followup.send("❌ Card pool is empty.", ephemeral=True)
+            if len(card_result) == 3:
+                number, cvv, was_last_card = card_result
+                card = (number, cvv)
+            else:
+                card = card_result
+                was_last_card = False
+            card_source = "pool"
+
+        was_last_email = False
+        email_pool_used = "fusion"
+        if custom_email:
+            email = custom_email
+            email_source = "custom"
+            email_pool_used = "custom"
+        else:
+            # Check pool counts before pulling to determine which pool will be used
+            pool_counts_before = bot.get_pool_counts()
+            fusion_count_before = pool_counts_before['emails']['fusion']
+
+            email_result = bot.get_and_remove_email('fusion', fallback_to_main=True)
+            if email_result is None:
+                return await interaction.followup.send("❌ Fusion and main email pools are empty.", ephemeral=True)
+            email = email_result
+            email_source = "pool"
+
+            # Determine which pool was actually used
+            if fusion_count_before > 0:
+                email_pool_used = "fusion"
+            else:
+                email_pool_used = "main"
+
+            pool_counts = bot.get_pool_counts()
+            was_last_email = pool_counts['emails'][email_pool_used] == 0
+
+        # Format: !otp email,link,cardnum,exp_month,exp_year,cvv,zip
+        command = f"!otp {email},{info['link']},{number},{EXP_MONTH},{EXP_YEAR},{cvv},{ZIP_CODE}"
+
+        if card_source == "pool" or email_source == "pool":
+            log_command_output(
+                command_type="tomato_order",
+                user_id=interaction.user.id,
+                username=str(interaction.user),
+                channel_id=interaction.channel.id,
+                guild_id=interaction.guild.id if interaction.guild else None,
+                command_output=command,
+                tip_amount=info['tip'],
+                card_used=card if card_source == "pool" else None,
+                email_used=email if email_source == "pool" else None,
+                additional_data={"parsed_fields": info, "card_source": card_source, "email_source": email_source, "email_pool": email_pool_used},
+            )
+
+        embed = discord.Embed(title="Tomato Order", color=0xFF6347)  # Tomato red color
+        embed.add_field(name="", value=f"```{command}```", inline=False)
+        embed.add_field(name="**Email used:**", value=f"```{email}```", inline=False)
+        if is_valid_field(info['name']):
+            formatted = format_name_csv(info['name'])
+            embed.add_field(name="Name:", value=f"```{formatted}```", inline=False)
+        if is_valid_field(info['addr2']):
+            embed.add_field(name="Apt / Suite / Floor:", value=f"```{info['addr2']}```", inline=False)
+        if is_valid_field(info['notes']):
+            embed.add_field(name="Delivery Notes:", value=f"```{info['notes']}```", inline=False)
+        embed.add_field(name="Tip:", value=f"```{clean_tip_amount(info['tip'])}```", inline=False)
+        pool_counts = bot.get_pool_counts()
+        card_count = pool_counts['cards']
+        warnings = []
+        if was_last_card and card_source == "pool":
+            warnings.append("⚠️ Card pool empty!")
+        if was_last_email and email_source == "pool":
+            warnings.append(f"⚠️ {email_pool_used} email pool empty!")
+        footer_parts = [f"Cards: {card_count}"]
+        for pool_name, email_count in pool_counts['emails'].items():
+            footer_parts.append(f"{pool_name}: {email_count}")
+        footer_parts.extend(warnings)
+        embed.set_footer(text=" | ".join(footer_parts))
+
+        # Handle interaction timeout
+        try:
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except discord.errors.NotFound:
+            # Interaction expired, try to send as followup if possible
+            print("Tomato order interaction expired")
+            return
+        except discord.HTTPException as e:
+            print(f"Failed to send tomato order response: {e}")
+            return
+
     @bot.tree.command(name='payments', description='Display payment methods')
     async def payments(interaction: discord.Interaction):
         try:
