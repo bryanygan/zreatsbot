@@ -9,11 +9,12 @@ ORDER_CHANNEL_MENTION = os.getenv('ORDER_CHANNEL_MENTION', '<#135093533726998533
 STATUS_MIRROR_CHANNEL_ID = 1350935337269985334  # Channel to mirror status messages
 
 rename_history = deque()
-status_message_id = None  # Track the last status message for deletion
+status_message_id = None  # Track the last status message in mirror channel for deletion
+main_status_message_id = None  # Track the last status message in main channel for deletion
 
 async def change_channel_status(channel: discord.TextChannel, status: str, silent: bool = False):
     """Rename the channel and send open/close/break announcements."""
-    global status_message_id
+    global status_message_id, main_status_message_id
     if status == "open":
         new_name = "open🟢🟢"
     elif status == "break":
@@ -41,20 +42,29 @@ async def change_channel_status(channel: discord.TextChannel, status: str, silen
         except:
             pass
 
+        # Delete previous status message from main channel if it exists
+        if main_status_message_id:
+            try:
+                old_message = await channel.fetch_message(main_status_message_id)
+                await old_message.delete()
+                main_status_message_id = None
+            except:
+                pass
+
+        # Delete previous status message from mirror channel if it exists
+        if status_message_id and mirror_channel:
+            try:
+                old_message = await mirror_channel.fetch_message(status_message_id)
+                await old_message.delete()
+                status_message_id = None
+            except:
+                pass
+
         if status == "open":
-            # Delete previous status message from mirror channel if it exists
-            if status_message_id and mirror_channel:
-                try:
-                    old_message = await mirror_channel.fetch_message(status_message_id)
-                    await old_message.delete()
-                    status_message_id = None
-                except:
-                    pass
-            
             # Only send role ping if not in silent mode
             if not silent:
                 await channel.send(f"ZR Eats is now OPEN! <@&{ROLE_PING_ID}>")
-            
+
             embed = discord.Embed(
                 title="ZR Eats is now OPEN!",
                 description=(
@@ -62,15 +72,17 @@ async def change_channel_status(channel: discord.TextChannel, status: str, silen
                     "to place an order."
                 ),
             )
-            await channel.send(embed=embed)
+            message = await channel.send(embed=embed)
+            main_status_message_id = message.id
         elif status == "break":
             embed = discord.Embed(
                 title="ZR Eats is now on hold!",
                 description="Please wait until a Chef is available to take new orders!",
             )
             embed.set_footer(text="Do not open a ticket during this time, you will not get a response.")
-            await channel.send(embed=embed)
-            
+            message = await channel.send(embed=embed)
+            main_status_message_id = message.id
+
             # Send same message to mirror channel
             if mirror_channel:
                 try:
@@ -87,7 +99,8 @@ async def change_channel_status(channel: discord.TextChannel, status: str, silen
                     "Do NOT constantly ping our chefs, that will not make the process any faster."
                 ),
             )
-            await channel.send(embed=embed)
+            message = await channel.send(embed=embed)
+            main_status_message_id = message.id
 
             # Send same message to mirror channel
             if mirror_channel:
@@ -104,8 +117,9 @@ async def change_channel_status(channel: discord.TextChannel, status: str, silen
                     "Do not open a ticket, you will not get a response."
                 ),
             )
-            await channel.send(embed=embed)
-            
+            message = await channel.send(embed=embed)
+            main_status_message_id = message.id
+
             # Send same message to mirror channel
             if mirror_channel:
                 try:
