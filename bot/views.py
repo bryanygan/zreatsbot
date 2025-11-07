@@ -76,7 +76,7 @@ class PaymentView(View):
                     if hasattr(item, 'custom_id') and item.custom_id == custom_id:
                         self.remove_item(item)
 
-    @discord.ui.button(label='Zelle', style=ButtonStyle.danger, emoji='🏦', custom_id='payment_zelle')
+    @discord.ui.button(label='Zelle', style=ButtonStyle.danger, emoji=discord.PartialEmoji(id=1436484726759231649), custom_id='payment_zelle')
     async def zelle_button(self, interaction: discord.Interaction, button: Button):
         embed = discord.Embed(
             title="💳 Zelle Payment",
@@ -87,7 +87,7 @@ class PaymentView(View):
         view = CopyablePaymentView("zelle")
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    @discord.ui.button(label='Venmo', style=ButtonStyle.primary, emoji='💙', custom_id='payment_venmo')
+    @discord.ui.button(label='Venmo', style=ButtonStyle.primary, emoji=discord.PartialEmoji(id=1436484722418127100), custom_id='payment_venmo')
     async def venmo_button(self, interaction: discord.Interaction, button: Button):
         embed = discord.Embed(title="💙 Venmo Payment", color=0x008CFF)
         embed.add_field(name="Username:", value="```@BGHype```", inline=False)
@@ -95,7 +95,7 @@ class PaymentView(View):
         view = CopyablePaymentView("venmo")
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    @discord.ui.button(label='PayPal', style=ButtonStyle.success, emoji='💚', custom_id='payment_paypal')
+    @discord.ui.button(label='PayPal', style=ButtonStyle.success, emoji=discord.PartialEmoji(id=1436484724406358076), custom_id='payment_paypal')
     async def paypal_button(self, interaction: discord.Interaction, button: Button):
         embed = discord.Embed(title="💚 PayPal Payment", color=0x00CF31)
         embed.add_field(name="Email:", value="```ganbryanbts@gmail.com```", inline=False)
@@ -103,7 +103,7 @@ class PaymentView(View):
         view = CopyablePaymentView("paypal")
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
     
-    @discord.ui.button(label='CashApp', style=ButtonStyle.success, emoji='💵', custom_id='payment_cashapp')
+    @discord.ui.button(label='CashApp', style=ButtonStyle.success, emoji=discord.PartialEmoji(id=1436484725727301662), custom_id='payment_cashapp')
     async def cashapp_button(self, interaction: discord.Interaction, button: Button):
         embed = discord.Embed(title="💵 CashApp Payment", color=0x00D632)
         embed.add_field(name="CashTag:", value="```$bygan```", inline=False)
@@ -111,7 +111,7 @@ class PaymentView(View):
         view = CopyablePaymentView("cashapp")
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    @discord.ui.button(label='Crypto', style=ButtonStyle.secondary, emoji='🪙', custom_id='payment_crypto')
+    @discord.ui.button(label='Crypto', style=ButtonStyle.secondary, emoji=discord.PartialEmoji(id=1436484723370233967), custom_id='payment_crypto')
     async def crypto_button(self, interaction: discord.Interaction, button: Button):
         embed = discord.Embed(title="🪙 Crypto Payment", color=0xffa500)
         embed.add_field(name="Available:", value="ETH, LTC, SOL, BTC, USDT, USDC", inline=False)
