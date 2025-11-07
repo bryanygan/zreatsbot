@@ -102,7 +102,7 @@ ROLE_PING_ID = os.getenv('ROLE_PING_ID', '1352022044614590494')
 ORDER_CHANNEL_MENTION = os.getenv('ORDER_CHANNEL_MENTION', '<#1350935337269985334>')
 
 EXP_MONTH = '11'
-EXP_YEAR = '35'
+EXP_YEAR = '30'
 ZIP_CODE = '19104'
 
 # Database path - supports both local development and Railway/production

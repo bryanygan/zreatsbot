@@ -28,7 +28,7 @@ from logging_utils import log_command_output
 import db
 
 EXP_MONTH = '11'
-EXP_YEAR = '35'
+EXP_YEAR = '30'
 ZIP_CODE = '19104'
 
 # Database path - supports both local development and Railway/production
