@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from typing import Optional, Tuple
 import asyncio
+from config import EXP_MONTH, EXP_YEAR, ZIP_CODE
 
 try:
     from db import (
@@ -100,10 +101,6 @@ OWNER_ID = int(os.getenv('OWNER_ID')) if os.getenv('OWNER_ID') else None
 OPENER_CHANNEL_ID = int(os.getenv('OPENER_CHANNEL_ID')) if os.getenv('OPENER_CHANNEL_ID') else None
 ROLE_PING_ID = os.getenv('ROLE_PING_ID', '1352022044614590494')
 ORDER_CHANNEL_MENTION = os.getenv('ORDER_CHANNEL_MENTION', '<#1350935337269985334>')
-
-EXP_MONTH = '12'
-EXP_YEAR = '30'
-ZIP_CODE = '19104'
 
 # Database path - supports both local development and Railway/production
 # Railway will use: /app/data/pool.db via DB_PATH environment variable
