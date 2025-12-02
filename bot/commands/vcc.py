@@ -3,10 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 from ..utils.helpers import owner_only
 import db
-
-EXP_MONTH = '11'
-EXP_YEAR = '30'
-ZIP_CODE = '19104'
+from combinedbot import EXP_MONTH, EXP_YEAR, ZIP_CODE
 
 def setup(bot: commands.Bot):
     @bot.tree.command(name='vcc', description='Pull a card from the pool in order format')

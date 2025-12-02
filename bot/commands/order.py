@@ -26,10 +26,7 @@ from ..utils.card_validator import CardValidator
 from ..utils.channel_status import rename_history
 from logging_utils import log_command_output
 import db
-
-EXP_MONTH = '11'
-EXP_YEAR = '30'
-ZIP_CODE = '19104'
+from combinedbot import EXP_MONTH, EXP_YEAR, ZIP_CODE
 
 # Database path - supports both local development and Railway/production
 DB_PATH = os.getenv('DB_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db'))
