@@ -2132,7 +2132,7 @@ def setup(bot: commands.Bot):
             if custom_service_fee is not None:
                 service_fee = custom_service_fee
             else:
-                service_fee = 6.0 if vip else 7.0
+                service_fee = 4.0 if vip else 5.0
             # If tip from ticket embed differs from tip in order text, we need to adjust
             # final_total includes the original tip, so we subtract it and add the new tip
             if tip_amount != tip_from_order:
