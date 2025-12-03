@@ -1780,8 +1780,8 @@ def setup(bot: commands.Bot):
     @bot.tree.command(name='z', description='Parse order information and display breakdown')
     @app_commands.describe(
         order_text="Paste the order information here",
-        vip="Enable VIP pricing ($6 service fee instead of $7)",
-        service_fee="Override service fee (default: $7.00, VIP: $6.00)"
+        vip="Enable VIP pricing ($4 service fee instead of $5)",
+        service_fee="Override service fee (default: $5.00, VIP: $4.00)"
     )
     async def z_command(interaction: discord.Interaction, order_text: str, vip: bool = False, service_fee: str = None):
         """Parse order information and display breakdown with payment options"""
@@ -2218,7 +2218,7 @@ def setup(bot: commands.Bot):
             if custom_service_fee is not None:
                 service_fee = custom_service_fee
             else:
-                service_fee = 6.0 if vip else 7.0
+                service_fee = 4.0 if vip else 5.0
             # If tip from ticket embed differs from tip in order text, we need to adjust
             # final_total includes the original tip, so we subtract it and add the new tip
             if tip_amount != tip_from_order:
@@ -2339,11 +2339,11 @@ def setup(bot: commands.Bot):
         if custom_service_fee is not None:
             service_fee = custom_service_fee
         else:
-            service_fee = 6.0 if vip else 7.0
-        
+            service_fee = 4.0 if vip else 5.0
+
         # Validate service fee
         if service_fee < 0:
-            service_fee = 7.0  # Default to standard fee
+            service_fee = 5.0  # Default to standard fee
         
         # Calculate new total with service fee, adjusting for tip difference
         if tip_amount != tip_from_order:
