@@ -964,6 +964,8 @@ def setup(bot: commands.Bot):
             return
 
     @bot.tree.command(name='payments', description='Display payment methods')
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    @app_commands.allowed_installs(guilds=True, users=True)
     async def payments(interaction: discord.Interaction):
         try:
             # Create and send response as quickly as possible

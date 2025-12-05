@@ -112,6 +112,7 @@ class CombinedBot(commands.Bot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.guilds = True
+        intents.dm_messages = True  # Enable DM support
         super().__init__(
             command_prefix='!', 
             intents=intents,
