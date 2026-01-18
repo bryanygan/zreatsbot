@@ -85,11 +85,12 @@ def start_discord_bot():
         await bot.process_commands(message)
 
     # Setup commands
-    from bot.commands import order as order_commands, admin as admin_commands, channel as channel_commands, vcc as vcc_commands
+    from bot.commands import order as order_commands, admin as admin_commands, channel as channel_commands, vcc as vcc_commands, feed as feed_commands
     channel_commands.setup(bot)
     order_commands.setup(bot)
     admin_commands.setup(bot)
     vcc_commands.setup(bot)
+    feed_commands.setup(bot)
 
     # Run bot (this will block this thread)
     print("🚀 Discord bot starting...")
