@@ -57,3 +57,74 @@ def setup(bot: commands.Bot):
                 await interaction.followup.send(f"```{cmd}```", ephemeral=True)
         else:
             await interaction.followup.send(response, ephemeral=True)
+
+    @bot.tree.command(name='bulk_feed', description='Generate feed commands for multiple links')
+    @app_commands.describe(
+        links='Multiple order links separated by spaces',
+        amount='Number of feed commands per link (default: 1, max: 5)'
+    )
+    async def bulk_feed(interaction: discord.Interaction, links: str, amount: int = 1):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("You are not authorized.", ephemeral=True)
+
+        await interaction.response.defer(ephemeral=True)
+
+        # Parse links (split by space)
+        link_list = [link.strip() for link in links.split() if link.strip()]
+
+        if not link_list:
+            return await interaction.followup.send("No valid links provided.", ephemeral=True)
+
+        # Validate amount
+        if amount < 1:
+            amount = 1
+        elif amount > 5:
+            return await interaction.followup.send("Amount per link cannot exceed 5.", ephemeral=True)
+
+        total_cards_needed = len(link_list) * amount
+
+        # Check if we have enough cards
+        pool_counts = db.get_pool_counts()
+        if pool_counts['cards'] < total_cards_needed:
+            return await interaction.followup.send(
+                f"Not enough cards in pool. Needed: {total_cards_needed} ({len(link_list)} links x {amount}), Available: {pool_counts['cards']}",
+                ephemeral=True
+            )
+
+        # Generate feed commands for each link
+        all_commands = []
+        for link in link_list:
+            for _ in range(amount):
+                card_result = db.get_and_remove_card()
+
+                if card_result is None:
+                    break
+
+                number, cvv = card_result
+                feed_cmd = f"/feed orderinfo: {link},{number},{EXP_MONTH}/{EXP_YEAR},{cvv},{ZIP_CODE}"
+                all_commands.append(feed_cmd)
+
+        if not all_commands:
+            return await interaction.followup.send("Card pool is empty.", ephemeral=True)
+
+        # Send commands in batches to avoid message length limits
+        current_batch = []
+        current_length = 0
+
+        for cmd in all_commands:
+            cmd_block = f"```{cmd}```"
+            # Account for newlines between blocks
+            block_length = len(cmd_block) + 2
+
+            if current_length + block_length > 1900:
+                # Send current batch
+                await interaction.followup.send("\n\n".join(current_batch), ephemeral=True)
+                current_batch = [cmd_block]
+                current_length = block_length
+            else:
+                current_batch.append(cmd_block)
+                current_length += block_length
+
+        # Send remaining commands
+        if current_batch:
+            await interaction.followup.send("\n\n".join(current_batch), ephemeral=True)
