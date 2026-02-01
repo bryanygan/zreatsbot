@@ -2194,7 +2194,7 @@ def setup(bot: commands.Bot):
             conf_description += f"Taxes & Fees: ${taxes_fees:.2f}\n"
             if offers != 0.0:
                 conf_description += f"Offers: ${offers:.2f}\n"
-            conf_description += f"App Total: ${final_total:.2f}\n\n"
+            conf_description += "\n"
             conf_description += f"**After Promo & Service Fee Applied:**\n"
             conf_description += f"Tip Amount: ${tip_amount:.2f}\n"
             conf_description += f"Service Fee: ${service_fee:.2f}\n"
@@ -2276,10 +2276,7 @@ def setup(bot: commands.Bot):
             else:
                 new_total = final_total + service_fee
             
-            embed_description += f"Your original total + taxes + Uber fees: ${original_total:.2f}\n"
-            if promotion != 0.0 or delivery_discount != 0.0 or offers != 0.0:
-                embed_description += f"App Total (after discounts): ${final_total:.2f}\n"
-            embed_description += "\n"
+            embed_description += f"Your original total + taxes + Uber fees: ${original_total:.2f}\n\n"
             embed_description += "**Promo Discount + Service Fee successfully applied!**\n"
             if vip:
                 embed_description += "**VIP discount applied!**\n"
