@@ -1846,6 +1846,8 @@ def setup(bot: commands.Bot):
             'Tipping Amount:',
             'Final Total:', 'Order Total:',
             'Subtotal:', 'Promotion:', 'Delivery Fee:',
+            'Delivery Discount:',  # New: support for delivery discounts
+            'Offers:',  # New: support for offers discount
             'Uber Cash:',
             'Total:',  # After 'Total After Tip:' and 'Final Total:'
             '╰・Tip:',  # Only split when Tip has the ╰・ prefix
@@ -1873,6 +1875,9 @@ def setup(bot: commands.Bot):
         temp_total = 0.0  # For storing "Total:" value temporarily
         cart_items = []  # Store cart items
         tip_from_order = 0.0  # Track tip parsed from order text
+        promotion = 0.0  # Track promotion discounts
+        delivery_discount = 0.0  # Track delivery discounts
+        offers = 0.0  # Track offers discounts
         
         # Detect which format and parse accordingly
         is_format_two = ':rice:' in order_text or ':cashmachine:' in order_text
@@ -1969,6 +1974,42 @@ def setup(bot: commands.Bot):
                     colon_idx = line.rfind(':')
                     if colon_idx != -1:
                         taxes_fees = parse_money(line[colon_idx + 1:])
+
+            # Parse promotion discount (e.g., "Promotion: -$20.00")
+            elif 'promotion:' in line_lower:
+                if '╰・' in line:
+                    clean_line = line.replace('╰・', '').strip()
+                    parts = clean_line.split(':', 1)
+                    if len(parts) > 1:
+                        promotion = parse_money(parts[1])
+                else:
+                    colon_idx = line.rfind(':')
+                    if colon_idx != -1:
+                        promotion = parse_money(line[colon_idx + 1:])
+
+            # Parse delivery discount (e.g., "Delivery Discount: -$1.99")
+            elif 'delivery discount:' in line_lower:
+                if '╰・' in line:
+                    clean_line = line.replace('╰・', '').strip()
+                    parts = clean_line.split(':', 1)
+                    if len(parts) > 1:
+                        delivery_discount = parse_money(parts[1])
+                else:
+                    colon_idx = line.rfind(':')
+                    if colon_idx != -1:
+                        delivery_discount = parse_money(line[colon_idx + 1:])
+
+            # Parse offers discount (e.g., "Offers: -$20.00")
+            elif 'offers:' in line_lower:
+                if '╰・' in line:
+                    clean_line = line.replace('╰・', '').strip()
+                    parts = clean_line.split(':', 1)
+                    if len(parts) > 1:
+                        offers = parse_money(parts[1])
+                else:
+                    colon_idx = line.rfind(':')
+                    if colon_idx != -1:
+                        offers = parse_money(line[colon_idx + 1:])
 
             # Parse tip from order text
             # Check if this is actually a tip line and not part of "Total After Tip:"
@@ -2145,8 +2186,15 @@ def setup(bot: commands.Bot):
             # Build the description with breakdown
             conf_description = f"**Order Total: ${original_total:.2f}**\n\n"
             conf_description += f"Subtotal: ${subtotal:.2f}\n"
+            if promotion != 0.0:
+                conf_description += f"Promotion: ${promotion:.2f}\n"
             conf_description += f"Delivery Fee: ${delivery_fee:.2f}\n"
-            conf_description += f"Taxes & Fees: ${taxes_fees:.2f}\n\n"
+            if delivery_discount != 0.0:
+                conf_description += f"Delivery Discount: ${delivery_discount:.2f}\n"
+            conf_description += f"Taxes & Fees: ${taxes_fees:.2f}\n"
+            if offers != 0.0:
+                conf_description += f"Offers: ${offers:.2f}\n"
+            conf_description += f"App Total: ${final_total:.2f}\n\n"
             conf_description += f"**After Promo & Service Fee Applied:**\n"
             conf_description += f"Tip Amount: ${tip_amount:.2f}\n"
             conf_description += f"Service Fee: ${service_fee:.2f}\n"
@@ -2228,7 +2276,10 @@ def setup(bot: commands.Bot):
             else:
                 new_total = final_total + service_fee
             
-            embed_description += f"Your original total + taxes + Uber fees: ${original_total:.2f}\n\n"
+            embed_description += f"Your original total + taxes + Uber fees: ${original_total:.2f}\n"
+            if promotion != 0.0 or delivery_discount != 0.0 or offers != 0.0:
+                embed_description += f"App Total (after discounts): ${final_total:.2f}\n"
+            embed_description += "\n"
             embed_description += "**Promo Discount + Service Fee successfully applied!**\n"
             if vip:
                 embed_description += "**VIP discount applied!**\n"
@@ -2326,7 +2377,25 @@ def setup(bot: commands.Bot):
             taxes_match = re.search(r'Taxes (?:&|and) (?:Other )?Fees:\s*\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
             if taxes_match:
                 taxes_fees = parse_money(taxes_match.group(1))
-            
+
+            # Look for promotion discount
+            if promotion == 0.0:
+                promotion_match = re.search(r'Promotion:\s*-?\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+                if promotion_match:
+                    promotion = -abs(parse_money(promotion_match.group(1)))
+
+            # Look for delivery discount
+            if delivery_discount == 0.0:
+                delivery_discount_match = re.search(r'Delivery Discount:\s*-?\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+                if delivery_discount_match:
+                    delivery_discount = -abs(parse_money(delivery_discount_match.group(1)))
+
+            # Look for offers discount
+            if offers == 0.0:
+                offers_match = re.search(r'Offers:\s*-?\$?([\d,]+\.?\d*)', order_text, re.IGNORECASE)
+                if offers_match:
+                    offers = -abs(parse_money(offers_match.group(1)))
+
             # Recalculate
             original_total = subtotal + delivery_fee + taxes_fees + 3.49
         
