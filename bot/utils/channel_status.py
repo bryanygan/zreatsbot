@@ -5,7 +5,9 @@ from collections import deque
 from discord.errors import HTTPException
 
 ROLE_PING_ID = os.getenv('ROLE_PING_ID', '1352022044614590494')
-ORDER_CHANNEL_MENTION = os.getenv('ORDER_CHANNEL_MENTION', '<#1350935337269985334>')
+ORDER_CHANNEL_MENTIONS = (
+    f"<#1350935337269985334>, <#1473952634439205076>, or <#1473952663526703136>"
+)
 STATUS_MIRROR_CHANNEL_ID = 1350935337269985334  # Channel to mirror status messages
 
 rename_history = deque()
@@ -68,7 +70,7 @@ async def change_channel_status(channel: discord.TextChannel, status: str, silen
             embed = discord.Embed(
                 title="ZR Eats is now OPEN!",
                 description=(
-                    f"We are now accepting orders! Click the order button in {ORDER_CHANNEL_MENTION} "
+                    f"We are now accepting orders! Click the order button in {ORDER_CHANNEL_MENTIONS} "
                     "to place an order."
                 ),
             )

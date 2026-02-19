@@ -52,20 +52,31 @@ DIRECTIONALS = {
     'northeast', 'northwest', 'southeast', 'southwest',
 }
 
+NOISE_LINES = {
+    'new', 'unpaid', 'forwarded', 'unmarked', 'done', 'sent',
+    'okay', 'okay!',
+}
+
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
 
 def _smart_title(s: str) -> str:
-    """Title-case a string without capitalizing letters immediately after digits.
-
-    ``"18th"`` stays ``"18th"`` instead of ``"18Th"``.
+    """Title-case a string without capitalizing letters immediately after
+    digits when they form ordinals (e.g. ``"18th"`` stays ``"18th"``).
+    Standalone letters after digits like ``"15H"`` remain uppercase.
     """
     if not s:
         return s
     titled = s.title()
-    return re.sub(r'(\d)([A-Z])', lambda m: m.group(1) + m.group(2).lower(), titled)
+    # Only lowercase when the uppercase letter is followed by another
+    # lowercase letter (ordinal like 18Th → 18th), not standalone like 15H.
+    return re.sub(
+        r'(\d)([A-Z])(?=[a-z])',
+        lambda m: m.group(1) + m.group(2).lower(),
+        titled,
+    )
 
 
 def _is_street2_line(line: str) -> bool:
@@ -82,8 +93,34 @@ def _is_street2_line(line: str) -> bool:
     return False
 
 
+def _is_noise_line(line: str) -> bool:
+    lower = line.lower().strip()
+    if lower in NOISE_LINES:
+        return True
+    if lower.startswith('@'):
+        return True
+    if lower.startswith('done.') or lower.startswith('my address'):
+        return True
+    if lower.startswith('address:'):
+        return True
+    if re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', lower):
+        return True
+    return False
+
+
+def _is_standalone_zip(line: str) -> bool:
+    return bool(re.match(r'^\d{5}(?:-\d{4})?\s*$', line.strip()))
+
+
 def _has_zip_at_end(line: str) -> bool:
     return bool(re.search(r'\b\d{5}(?:-\d{4})?\s*$', line.strip()))
+
+
+def _has_street_suffix(line: str) -> bool:
+    for word in line.split():
+        if word.lower().rstrip('.') in STREET_SUFFIXES:
+            return True
+    return False
 
 
 def _extract_state_from_end(text: str):
@@ -93,23 +130,30 @@ def _extract_state_from_end(text: str):
     if not words:
         return None, text
 
-    # 2-letter abbreviation
     last = words[-1].strip(',')
-    if len(last) == 2 and last.upper() in STATE_ABBREVS:
+
+    # 2-letter abbreviation (also handles D.C. → DC)
+    last_clean = last.replace('.', '')
+    if len(last_clean) == 2 and last_clean.upper() in STATE_ABBREVS:
         remaining = ' '.join(words[:-1]).rstrip(',').strip()
-        return last.upper(), remaining
+        return last_clean.upper(), remaining
 
     # Single-word full state name
     if last.strip(',').lower() in STATE_MAP:
         remaining = ' '.join(words[:-1]).rstrip(',').strip()
         return STATE_MAP[last.strip(',').lower()], remaining
 
-    # Two-word state name (e.g. New York, West Virginia)
+    # Two-word state name (e.g. New York, West Virginia, Rhode Island)
     if len(words) >= 2:
         two = f'{words[-2].strip(",")} {words[-1].strip(",")}'.lower()
         if two in STATE_MAP:
             remaining = ' '.join(words[:-2]).rstrip(',').strip()
             return STATE_MAP[two], remaining
+        # Also check combined without periods (D. C. → DC)
+        combined = two.replace('.', '').replace(' ', '')
+        if len(combined) == 2 and combined.upper() in STATE_ABBREVS:
+            remaining = ' '.join(words[:-2]).rstrip(',').strip()
+            return combined.upper(), remaining
 
     # Three-word state name (District of Columbia)
     if len(words) >= 3:
@@ -142,17 +186,27 @@ def _split_street_city(text: str):
         if word.lower().rstrip('.') in STREET_SUFFIXES:
             last_suffix_idx = i
 
-    if last_suffix_idx == -1:
-        return text, ''
+    if last_suffix_idx >= 0:
+        # Absorb directionals that follow the suffix
+        split_idx = last_suffix_idx + 1
+        while split_idx < len(words) and words[split_idx].lower() in DIRECTIONALS:
+            split_idx += 1
+        street = ' '.join(words[:split_idx])
+        city = ' '.join(words[split_idx:])
+        return street, city
 
-    # Absorb directionals that follow the suffix (e.g. "south" in "street south")
-    split_idx = last_suffix_idx + 1
-    while split_idx < len(words) and words[split_idx].lower() in DIRECTIONALS:
-        split_idx += 1
+    # Fallback for grid addresses (e.g. "2109 N 150 W Anderson"):
+    # if there are 2+ directionals, split after the last number/directional run.
+    dir_indices = [i for i, w in enumerate(words) if w.lower() in DIRECTIONALS]
+    if len(dir_indices) >= 2:
+        last_dir = dir_indices[-1]
+        split_idx = last_dir + 1
+        if split_idx < len(words):
+            street = ' '.join(words[:split_idx])
+            city = ' '.join(words[split_idx:])
+            return street, city
 
-    street = ' '.join(words[:split_idx])
-    city = ' '.join(words[split_idx:])
-    return street, city
+    return text, ''
 
 
 def _extract_inline_address(line: str):
@@ -179,7 +233,24 @@ def _extract_inline_address(line: str):
     if not street or not city:
         return None
 
-    return {'street': street, 'city': city, 'state': state, 'zip': zip_code}
+    # 4. If "city" starts with an apt marker, extract street2
+    street2 = ''
+    if city:
+        apt_m = re.match(
+            r'((?:apt|apartment|suite|ste|unit)\.?\s*#?\s*\w+)\s*[,;]?\s*',
+            city, re.IGNORECASE,
+        )
+        if apt_m:
+            street2 = apt_m.group(1).strip()
+            city = city[apt_m.end():].strip().lstrip(',').strip()
+
+    if not city:
+        return None
+
+    return {
+        'street': street, 'street2': street2,
+        'city': city, 'state': state, 'zip': zip_code,
+    }
 
 
 def _parse_city_state_zip(line: str):
@@ -198,6 +269,78 @@ def _parse_city_state_zip(line: str):
     return {'city': city, 'state': state or '', 'zip': zip_code}
 
 
+def _parse_full_line_address(line: str):
+    """Parse a line containing ``name, street, city, state, zip`` all inline.
+
+    Used for lines like ``"Ryan Cu, 10661 La Dona Dr., Garden Grove, CA, 92840"``.
+    Returns a dict or ``None``.
+    """
+    line = line.strip()
+
+    # 1. Extract ZIP
+    zip_match = re.search(r'\b(\d{5}(?:-\d{4})?)\s*$', line)
+    if not zip_match:
+        return None
+    zip_code = zip_match.group(1)
+    remaining = line[:zip_match.start()].strip().rstrip(',').strip()
+
+    # 2. Extract state
+    state, remaining = _extract_state_from_end(remaining)
+    if not state:
+        return None
+    remaining = remaining.strip().rstrip(',').strip()
+
+    # Strategy A: comma-separated parts — find the part that looks like a street
+    parts = [p.strip() for p in remaining.split(',') if p.strip()]
+    name = ''
+    street = ''
+    street2 = ''
+    city = ''
+
+    for i, part in enumerate(parts):
+        if part and part[0].isdigit() and _has_street_suffix(part):
+            name = ', '.join(parts[:i]).strip()
+            street = part
+            rest = [p.strip() for p in parts[i + 1:] if p.strip()]
+            if rest and _is_street2_line(rest[0]):
+                street2 = rest[0]
+                rest = rest[1:]
+            city = ', '.join(rest).strip()
+            break
+
+    # Strategy B: regex to find digit+suffix pattern in full text
+    if not street:
+        suffix_alts = '|'.join(
+            re.escape(s) for s in sorted(STREET_SUFFIXES, key=len, reverse=True)
+        )
+        m = re.search(
+            r'(\d+\s+(?:\S+\s+)*?(?:' + suffix_alts + r')\.?)\b',
+            remaining, re.IGNORECASE,
+        )
+        if m:
+            street = m.group(1).strip()
+            name = remaining[:m.start()].strip().rstrip(',').strip()
+            after = remaining[m.end():].strip().lstrip(',').strip()
+            # Check for apt in the text after street
+            if after:
+                apt_m = re.match(
+                    r'((?:apt|apartment|suite|ste|unit)\.?\s*#?\s*\w+)\s*[,;]?\s*',
+                    after, re.IGNORECASE,
+                )
+                if apt_m:
+                    street2 = apt_m.group(1).strip()
+                    after = after[apt_m.end():].strip().lstrip(',').strip()
+            city = after.strip().rstrip(',').strip()
+
+    if not street or not city:
+        return None
+
+    return {
+        'name': name, 'street': street, 'street2': street2,
+        'city': city, 'state': state, 'zip': zip_code,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -211,54 +354,160 @@ def parse_address(text: str) -> dict:
     if not text or not text.strip():
         return {'error': 'No address provided'}
 
-    # Preprocess lines
+    # ---- Preprocess lines ----
     lines = []
     for raw in text.splitlines():
         cleaned = raw.strip()
-        if cleaned and cleaned.lower() not in COUNTRY_LINES:
-            lines.append(cleaned)
+        if not cleaned:
+            continue
+        # Strip trailing punctuation that interferes with zip detection
+        cleaned = cleaned.rstrip('.,;:').strip()
+        # Normalize tight commas: "Clinton,MD" → "Clinton, MD"
+        cleaned = re.sub(r',([A-Za-z])', r', \1', cleaned)
+        # Normalize state glued to zip: "Louisiana70570" → "Louisiana 70570"
+        cleaned = re.sub(r'([a-zA-Z])(\d{5}(?:-\d{4})?)\s*$', r'\1 \2', cleaned)
+        if cleaned.lower() in COUNTRY_LINES:
+            continue
+        lines.append(cleaned)
 
     if not lines:
         return {'error': 'No address provided'}
 
+    # ---- Single-pass classification ----
     name = ''
     street = ''
     street2 = ''
     city = ''
     state = ''
     zip_code = ''
+    street_idx = -1
+    unclassified = []          # [(line_index, text)]
 
-    for line in lines:
-        # 1. Secondary address (apt / suite / unit / …)
-        if _is_street2_line(line):
-            street2 = line
+    for i, line in enumerate(lines):
+        # Skip noise / email / discord mention lines
+        if _is_noise_line(line):
             continue
 
-        # 2. Starts with a digit → street, possibly with inline city/state/zip
+        # 1. Secondary address (apt / suite / unit / …)
+        if _is_street2_line(line):
+            if not street2:
+                street2 = line
+            continue
+
+        # 2. Starts with a digit
         if line[0].isdigit():
+            # 2a. Just a ZIP code on its own
+            if _is_standalone_zip(line):
+                if not zip_code:
+                    zip_code = line.strip()
+                continue
+
+            # 2b. Try inline extraction (street + city/state/zip)
             inline = _extract_inline_address(line)
-            if inline:
+            if inline and not street:
                 street = inline['street']
                 city = inline['city']
                 state = inline['state']
                 zip_code = inline['zip']
-            else:
-                street = line
+                street_idx = i
+                if inline.get('street2') and not street2:
+                    street2 = inline['street2']
+                continue
+
+            # 2c. Plain street line
+            if not street:
+                # Check for embedded apt mid-line and split it out
+                apt_m = re.search(
+                    r'\b(apt\.?|apartment|suite|ste\.?|unit)\b',
+                    line, re.IGNORECASE,
+                )
+                if apt_m and _has_street_suffix(line[:apt_m.start()]):
+                    street = line[:apt_m.start()].strip()
+                    if not street2:
+                        street2 = line[apt_m.start():].strip()
+                else:
+                    street = line
+                street_idx = i
             continue
 
-        # 3. Ends with a ZIP → city/state/zip line
+        # 3. Ends with a ZIP → city/state/zip line (or full-line address)
         if _has_zip_at_end(line):
-            csz = _parse_city_state_zip(line)
-            if csz:
-                city = csz['city']
-                state = csz['state']
-                zip_code = csz['zip']
+            if not city:
+                # If we don't have a street yet, try full-line parse
+                if not street:
+                    full = _parse_full_line_address(line)
+                    if full:
+                        name = full.get('name', '') or name
+                        street = full['street']
+                        street_idx = i
+                        street2 = full.get('street2', '') or street2
+                        city = full['city']
+                        state = full['state']
+                        zip_code = full['zip']
+                        continue
+                csz = _parse_city_state_zip(line)
+                if csz:
+                    city = csz['city']
+                    state = csz['state']
+                    zip_code = csz['zip']
             continue
 
-        # 4. Otherwise → name (first unclassified line)
-        if not name:
-            name = line
+        # 4. Unclassified — save for post-processing
+        unclassified.append((i, line))
 
+    # ---- Post-processing ----
+
+    # P1: Find state from unclassified lines (handles "TX" or "California" alone)
+    if street and not state:
+        for idx, (i, line) in enumerate(unclassified):
+            stripped = line.strip().rstrip(',').strip()
+            clean = stripped.replace('.', '')
+            if len(clean) == 2 and clean.upper() in STATE_ABBREVS:
+                state = clean.upper()
+                unclassified.pop(idx)
+                break
+            if stripped.lower() in STATE_MAP:
+                state = STATE_MAP[stripped.lower()]
+                unclassified.pop(idx)
+                break
+
+    # P2: Find city/state from unclassified lines that end with a state
+    if street and not state:
+        for idx, (i, line) in enumerate(unclassified):
+            st, remaining = _extract_state_from_end(line)
+            if st:
+                state = st
+                ct = remaining.strip().rstrip(',').strip()
+                if ct and not city:
+                    city = ct
+                unclassified.pop(idx)
+                break
+
+    # P3: Find city from unclassified lines positioned between street and state/zip
+    if street and state and not city:
+        for idx, (i, line) in enumerate(unclassified):
+            if street_idx < i:
+                # Candidate city line — accept short lines (1–4 words)
+                words = line.split()
+                if 1 <= len(words) <= 4:
+                    city = line
+                    unclassified.pop(idx)
+                    break
+
+    # P4: Extract city from street if still missing (street has suffix + trailing city)
+    if not city and street:
+        st, ct = _split_street_city(street)
+        if st and ct:
+            street = st
+            city = ct
+
+    # P5: Name from remaining unclassified
+    if not name:
+        for idx, (i, line) in enumerate(unclassified):
+            name = line
+            break
+
+    # ---- Validate ----
     if not street:
         return {'error': 'Could not parse address: no street found'}
     if not zip_code:
