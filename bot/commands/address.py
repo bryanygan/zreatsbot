@@ -8,13 +8,14 @@ from discord import app_commands
 from discord.ext import commands
 
 from ..utils.helpers import owner_only
-from ..utils.address_parser import (
-    parse_address,
-    format_address_csv,
-    STATE_MAP,
-    STATE_ABBREVS,
-    _smart_title,
-    _extract_state_from_end,
+from ..utils.address_parser import parse_address
+from config import (
+    SHIP_FROM_NAME,
+    SHIP_FROM_STREET,
+    SHIP_FROM_STREET2,
+    SHIP_FROM_CITY,
+    SHIP_FROM_STATE,
+    SHIP_FROM_ZIP,
 )
 
 # Temporary storage for parsed addresses awaiting modal submission.
@@ -29,7 +30,6 @@ def _cleanup(modal_id: str) -> None:
 
 
 def _store_parsed(modal_id: str, parsed: dict) -> None:
-    # Cancel any previous timer for the same id (shouldn't happen, but be safe)
     old = _pending_addresses.get(modal_id)
     if old and "handle" in old:
         old["handle"].cancel()
@@ -46,36 +46,6 @@ def _pop_parsed(modal_id: str) -> dict | None:
     if "handle" in entry:
         entry["handle"].cancel()
     return entry["parsed"]
-
-
-def _parse_from_csz(text: str) -> dict | None:
-    """Parse a 'City, State, ZIP' string into components.
-
-    Accepts formats like:
-      "Los Angeles, CA, 90210"
-      "Los Angeles, CA 90210"
-      "Los Angeles CA 90210"
-    """
-    import re
-
-    text = text.strip()
-    # Extract ZIP (5 or 5+4) from the end
-    m = re.search(r'\b(\d{5}(?:-\d{4})?)\s*$', text)
-    if not m:
-        return None
-    zip_code = m.group(1)
-    rest = text[:m.start()].strip().rstrip(',').strip()
-
-    # Extract state from end of remaining text
-    state, rest = _extract_state_from_end(rest)
-    if not state:
-        return None
-
-    city = rest.strip().rstrip(',').strip()
-    if not city:
-        return None
-
-    return {"city": _smart_title(city), "state": state.upper(), "zip": zip_code}
 
 
 def _escape_csv_field(value: str) -> str:
@@ -113,7 +83,7 @@ def setup(bot: commands.Bot):
         modal_id = f"address_csv_modal_{interaction.id}"
         _store_parsed(modal_id, parsed)
 
-        # Build and send the modal
+        # Build and send the modal — only asks for weight
         modal = discord.ui.Modal(title="Generate Shipping CSV", custom_id=modal_id)
         modal.add_item(
             discord.ui.TextInput(
@@ -124,44 +94,7 @@ def setup(bot: commands.Bot):
                 custom_id="weight",
             )
         )
-        modal.add_item(
-            discord.ui.TextInput(
-                label="From: Name",
-                style=discord.TextStyle.short,
-                required=True,
-                placeholder="e.g. John Doe",
-                custom_id="from_name",
-            )
-        )
-        modal.add_item(
-            discord.ui.TextInput(
-                label="From: Street Address",
-                style=discord.TextStyle.short,
-                required=True,
-                placeholder="e.g. 123 Main St",
-                custom_id="from_street",
-            )
-        )
-        modal.add_item(
-            discord.ui.TextInput(
-                label="From: Apt/Suite (leave blank if none)",
-                style=discord.TextStyle.short,
-                required=False,
-                placeholder="e.g. Apt 4B",
-                custom_id="from_street2",
-            )
-        )
-        modal.add_item(
-            discord.ui.TextInput(
-                label="From: City, State, ZIP",
-                style=discord.TextStyle.short,
-                required=True,
-                placeholder="e.g. Los Angeles, CA, 90210",
-                custom_id="from_csz",
-            )
-        )
 
-        # We need to attach the on_submit callback
         async def on_modal_submit(modal_interaction: discord.Interaction):
             await _handle_modal_submit(modal_interaction, modal_id)
 
@@ -181,24 +114,13 @@ def setup(bot: commands.Bot):
                 "Session expired. Please try again.", ephemeral=True
             )
 
-        # Extract modal field values by custom_id
-        fields = {
-            child.custom_id: child.value
-            for child in interaction.data.get("components", [])
-            for child in child.get("components", [])
-        }
-        # discord.py v2 exposes components differently depending on version;
-        # walk all action-row children to be safe.
-        if not fields:
-            for row in interaction.data.get("components", []):
-                for comp in row.get("components", []):
-                    fields[comp["custom_id"]] = comp.get("value", "")
+        # Extract weight from modal fields
+        fields = {}
+        for row in interaction.data.get("components", []):
+            for comp in row.get("components", []):
+                fields[comp["custom_id"]] = comp.get("value", "")
 
         weight_raw = fields.get("weight", "").strip()
-        from_name = fields.get("from_name", "").strip()
-        from_street = fields.get("from_street", "").strip()
-        from_street2 = fields.get("from_street2", "").strip()
-        from_csz_raw = fields.get("from_csz", "").strip()
 
         # Validate weight
         try:
@@ -211,27 +133,18 @@ def setup(bot: commands.Bot):
                 ephemeral=True,
             )
 
-        # Parse from city/state/zip
-        from_csz = _parse_from_csz(from_csz_raw)
-        if from_csz is None:
-            return await interaction.response.send_message(
-                f"Could not parse From city/state/ZIP: `{from_csz_raw}`\n"
-                "Expected format: `City, ST, 12345` or `City ST 12345`",
-                ephemeral=True,
-            )
-
         # Format weight — drop trailing zeros (2.0 → "2", 2.5 → "2.5")
         weight_str = f"{weight:g}"
 
-        # Build CSV fields
+        # Build CSV fields using config "From" address
         csv_fields = [
             weight_str,
-            from_name,
-            from_street,
-            from_street2,
-            from_csz["city"],
-            from_csz["state"],
-            from_csz["zip"],
+            SHIP_FROM_NAME,
+            SHIP_FROM_STREET,
+            SHIP_FROM_STREET2,
+            SHIP_FROM_CITY,
+            SHIP_FROM_STATE,
+            SHIP_FROM_ZIP,
             to_addr["name"],
             to_addr["street"],
             to_addr["street2"],
@@ -242,11 +155,11 @@ def setup(bot: commands.Bot):
         csv_line = ",".join(_escape_csv_field(f) for f in csv_fields)
 
         # Build formatted addresses for the embed
-        from_lines = [from_name, from_street]
-        if from_street2:
-            from_lines.append(from_street2)
+        from_lines = [SHIP_FROM_NAME, SHIP_FROM_STREET]
+        if SHIP_FROM_STREET2:
+            from_lines.append(SHIP_FROM_STREET2)
         from_lines.append(
-            f"{from_csz['city']}, {from_csz['state']} {from_csz['zip']}"
+            f"{SHIP_FROM_CITY}, {SHIP_FROM_STATE} {SHIP_FROM_ZIP}"
         )
 
         to_lines = [to_addr["name"]] if to_addr["name"] else []
