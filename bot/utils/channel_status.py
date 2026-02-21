@@ -65,10 +65,10 @@ async def change_channel_status(channel: discord.TextChannel, status: str, silen
         if status == "open":
             # Only send role ping if not in silent mode
             if not silent:
-                await channel.send(f"ZR Eats is now OPEN! <@&{ROLE_PING_ID}>")
+                await channel.send(f"Ocky Deli is now OPEN! <@&{ROLE_PING_ID}>")
 
             embed = discord.Embed(
-                title="ZR Eats is now OPEN!",
+                title="Ocky Deli is now OPEN!",
                 description=(
                     f"We are now accepting orders! Click the order button in {ORDER_CHANNEL_MENTIONS} "
                     "to place an order."
@@ -78,7 +78,7 @@ async def change_channel_status(channel: discord.TextChannel, status: str, silen
             main_status_message_id = message.id
         elif status == "break":
             embed = discord.Embed(
-                title="ZR Eats is now on hold!",
+                title="Ocky Deli is now on hold!",
                 description="Please wait until a Chef is available to take new orders!",
             )
             embed.set_footer(text="Do not open a ticket during this time, you will not get a response.")
@@ -94,7 +94,7 @@ async def change_channel_status(channel: discord.TextChannel, status: str, silen
                     pass
         elif status == "semi-open":
             embed = discord.Embed(
-                title="ZR Eats is now (semi) open.",
+                title="Ocky Deli is now (semi) open.",
                 description=(
                     "We are (semi) open. This means that our chefs will periodically check tickets from time to time. "
                     "Please be patient when waiting for a price quote, and expect some wait time. "
@@ -113,7 +113,7 @@ async def change_channel_status(channel: discord.TextChannel, status: str, silen
                     pass
         else:  # close
             embed = discord.Embed(
-                title="ZR Eats is now CLOSED.",
+                title="Ocky Deli is now CLOSED.",
                 description=(
                     "We are currently closed. Please come back later when we're open for new orders! "
                     "Do not open a ticket, you will not get a response."
