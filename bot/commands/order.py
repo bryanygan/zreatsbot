@@ -26,7 +26,7 @@ from ..utils.card_validator import CardValidator
 from ..utils.channel_status import rename_history
 from logging_utils import log_command_output
 import db
-from config import EXP_MONTH, EXP_YEAR, ZIP_CODE
+import config
 
 # Database path - supports both local development and Railway/production
 DB_PATH = os.getenv('DB_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db'))
@@ -93,7 +93,7 @@ def setup(bot: commands.Bot):
             card_source = "pool"
 
         raw_name = info['name']
-        base_command = f"{info['link']},{number},{EXP_MONTH},{EXP_YEAR},{cvv},{ZIP_CODE}"
+        base_command = f"{info['link']},{number},{config.EXP_MONTH},{config.EXP_YEAR},{cvv},{config.ZIP_CODE}"
         if email:
             base_command += f",{email}"
 
@@ -555,7 +555,7 @@ def setup(bot: commands.Bot):
             was_last_email = pool_counts['emails'][email_pool_used] == 0
 
         raw_name = info['name']
-        parts = [f"/order uber order_details:{info['link']},{number},{EXP_MONTH},{EXP_YEAR},{cvv},{ZIP_CODE},{email}"]
+        parts = [f"/order uber order_details:{info['link']},{number},{config.EXP_MONTH},{config.EXP_YEAR},{cvv},{config.ZIP_CODE},{email}"]
         if is_valid_field(raw_name):
             name = normalize_name(raw_name)
             parts.append(f"override_name:{name}")
@@ -787,7 +787,7 @@ def setup(bot: commands.Bot):
             pool_counts = bot.get_pool_counts()
             was_last_email = pool_counts['emails'][email_pool_used] == 0
 
-        command = f"{info['link']},{number},{EXP_MONTH}/{EXP_YEAR},{cvv},{ZIP_CODE},{email}"
+        command = f"{info['link']},{number},{config.EXP_MONTH}/{config.EXP_YEAR},{cvv},{config.ZIP_CODE},{email}"
 
         if card_source == "pool" or email_source == "pool":
             log_command_output(
@@ -912,7 +912,7 @@ def setup(bot: commands.Bot):
             was_last_email = pool_counts['emails'][email_pool_used] == 0
 
         # Format: !otp email,link,cardnum,exp_month,exp_year,cvv,zip
-        command = f"!otp {email},{info['link']},{number},{EXP_MONTH},{EXP_YEAR},{cvv},{ZIP_CODE}"
+        command = f"!otp {email},{info['link']},{number},{config.EXP_MONTH},{config.EXP_YEAR},{cvv},{config.ZIP_CODE}"
 
         if card_source == "pool" or email_source == "pool":
             log_command_output(

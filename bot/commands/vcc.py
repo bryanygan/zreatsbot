@@ -3,7 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 from ..utils.helpers import owner_only
 import db
-from config import EXP_MONTH, EXP_YEAR, ZIP_CODE
+import config
 
 def setup(bot: commands.Bot):
     @bot.tree.command(name='vcc', description='Pull a card from the pool in order format')
@@ -20,6 +20,6 @@ def setup(bot: commands.Bot):
 
         number, cvv = card_result
 
-        card_format = f"{number},{EXP_MONTH}/{EXP_YEAR},{cvv},{ZIP_CODE}"
+        card_format = f"{number},{config.EXP_MONTH}/{config.EXP_YEAR},{cvv},{config.ZIP_CODE}"
 
         await interaction.followup.send(f"```{card_format}```", ephemeral=True)

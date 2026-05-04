@@ -13,6 +13,7 @@ from logging_utils import log_command_output, get_recent_logs, get_full_logs, ge
 from ..utils.card_validator import CardValidator
 from ..utils.helpers import owner_only
 import db
+import config
 
 # Database path - supports both local development and Railway/production
 DB_PATH = os.getenv('DB_PATH', os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'data', 'pool.db'))
@@ -997,7 +998,7 @@ def setup(bot: commands.Bot):
         )
         
         embed.set_footer(text=f"Changed by {interaction.user}")
-        
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @bot.tree.command(name='toggle_cashapp', description='(Admin) Enable or disable the CashApp payment button (legacy)')
@@ -1035,5 +1036,51 @@ def setup(bot: commands.Bot):
         )
         
         embed.set_footer(text=f"Changed by {interaction.user}")
-        
+
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @bot.tree.command(name='set_expiration', description='(Admin) Update the card expiration month and/or year used in all commands')
+    @app_commands.describe(
+        month='Expiration month (2 digits, e.g. 04)',
+        year='Expiration year (2 digits, e.g. 31)',
+    )
+    async def set_expiration(interaction: discord.Interaction, month: str = None, year: str = None):
+        if not owner_only(interaction):
+            return await interaction.response.send_message("❌ Unauthorized.", ephemeral=True)
+
+        if month is None and year is None:
+            return await interaction.response.send_message(
+                f"Current expiration: **{config.EXP_MONTH}/{config.EXP_YEAR}**\n"
+                "Provide `month` and/or `year` to update.",
+                ephemeral=True
+            )
+
+        if month is not None:
+            if not month.isdigit() or len(month) != 2 or not (1 <= int(month) <= 12):
+                return await interaction.response.send_message(
+                    "❌ Invalid month. Must be a 2-digit number between 01 and 12 (e.g. `04`).",
+                    ephemeral=True
+                )
+
+        if year is not None:
+            if not year.isdigit() or len(year) != 2:
+                return await interaction.response.send_message(
+                    "❌ Invalid year. Must be exactly 2 digits (e.g. `31`).",
+                    ephemeral=True
+                )
+
+        old_month = config.EXP_MONTH
+        old_year = config.EXP_YEAR
+
+        if month is not None:
+            config.EXP_MONTH = month
+            db.set_config_setting('EXP_MONTH', month)
+
+        if year is not None:
+            config.EXP_YEAR = year
+            db.set_config_setting('EXP_YEAR', year)
+
+        await interaction.response.send_message(
+            f"✅ Expiration updated: **{old_month}/{old_year}** → **{config.EXP_MONTH}/{config.EXP_YEAR}**",
+            ephemeral=True
+        )
