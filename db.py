@@ -79,6 +79,14 @@ def init_db():
         )
     ''')
 
+    # Table for storing bot configuration settings
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS config_settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+    ''')
+
     # Initialize default payment methods if they don't exist
     default_methods = ['zelle', 'venmo', 'paypal', 'cashapp', 'crypto']
     for method in default_methods:
@@ -360,6 +368,26 @@ def get_all_payment_settings() -> dict:
     cursor.execute('SELECT method, enabled FROM payment_settings')
     rows = cursor.fetchall()
     return {method: bool(enabled) for method, enabled in rows}
+
+
+def get_config_setting(key: str, default: str = None) -> str:
+    """Get a bot configuration value by key."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT value FROM config_settings WHERE key = ?', (key,))
+    row = cursor.fetchone()
+    return row[0] if row else default
+
+
+def set_config_setting(key: str, value: str) -> None:
+    """Persist a bot configuration value."""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT OR REPLACE INTO config_settings (key, value) VALUES (?, ?)',
+        (key, value)
+    )
+    conn.commit()
 
 
 # Initialize DB on import and create the shared connection

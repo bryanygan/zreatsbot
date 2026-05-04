@@ -3,7 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 from ..utils.helpers import owner_only
 import db
-from config import EXP_MONTH, EXP_YEAR, ZIP_CODE
+import config
 
 def setup(bot: commands.Bot):
     @bot.tree.command(name='feed', description='Generate feed command(s) with VCC from pool')
@@ -41,7 +41,7 @@ def setup(bot: commands.Bot):
 
             number, cvv = card_result
             # Format: /feed orderinfo: link,card_number,exp_month/exp_year,cvv,zip_code
-            feed_cmd = f"/feed orderinfo: {link},{number},{EXP_MONTH}/{EXP_YEAR},{cvv},{ZIP_CODE}"
+            feed_cmd = f"/feed orderinfo: {link},{number},{config.EXP_MONTH}/{config.EXP_YEAR},{cvv},{config.ZIP_CODE}"
             feed_commands.append(feed_cmd)
 
         if not feed_commands:
@@ -101,7 +101,7 @@ def setup(bot: commands.Bot):
                     break
 
                 number, cvv = card_result
-                feed_cmd = f"/feed orderinfo: {link},{number},{EXP_MONTH}/{EXP_YEAR},{cvv},{ZIP_CODE}"
+                feed_cmd = f"/feed orderinfo: {link},{number},{config.EXP_MONTH}/{config.EXP_YEAR},{cvv},{config.ZIP_CODE}"
                 all_commands.append(feed_cmd)
 
         if not all_commands:

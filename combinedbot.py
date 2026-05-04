@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from typing import Optional, Tuple
 import asyncio
-from config import EXP_MONTH, EXP_YEAR, ZIP_CODE
+import config
 
 try:
     from db import (
@@ -122,9 +122,11 @@ class CombinedBot(commands.Bot):
 
     def init_database(self):
         init_db()
+        config.load_from_db()
 
     def init_pool_db(self):
         init_db()
+        config.load_from_db()
 
     async def close(self):
         close_connection()
