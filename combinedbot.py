@@ -83,12 +83,12 @@ except ModuleNotFoundError:  # pragma: no cover - fallback for tests
         globals()[name] = mod
 
 try:
-    from bot.commands import order as order_commands, admin as admin_commands, channel as channel_commands, vcc as vcc_commands, feed as feed_commands
+    from bot.commands import order as order_commands, admin as admin_commands, channel as channel_commands, vcc as vcc_commands, feed as feed_commands, slides as slides_commands
 except ModuleNotFoundError:  # pragma: no cover - fallback for tests
     import importlib.util
     import pathlib
     base = pathlib.Path(__file__).resolve().parent / "bot" / "commands"
-    for name in ["order", "admin", "channel", "vcc", "feed"]:
+    for name in ["order", "admin", "channel", "vcc", "feed", "slides"]:
         spec = importlib.util.spec_from_file_location(f"bot.commands.{name}", base / f"{name}.py")
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
@@ -255,6 +255,7 @@ def main():
     admin_commands.setup(bot)
     vcc_commands.setup(bot)
     feed_commands.setup(bot)
+    slides_commands.setup(bot)
     return bot
 
 
