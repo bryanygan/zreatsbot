@@ -1,0 +1,7 @@
+# Railpack/Railway uses mise to provision Python. As of mise 2026.6.x, mise
+# verifies GitHub artifact attestations for python-build-standalone downloads,
+# but older builds (e.g. cpython 3.12.7 from 2024) have none, so the install
+# hard-fails with "No GitHub artifact attestations found". Disable that check so
+# deploys keep working on the pinned runtime.
+[settings]
+python.github_attestations = false
